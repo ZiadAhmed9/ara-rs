@@ -1,0 +1,22 @@
+[package]
+name = "ara-com-someip"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "SOME/IP transport backend for ara-com Adaptive AUTOSAR communication"
+keywords = ["autosar", "someip", "automotive", "service-discovery"]
+categories = ["network-programming", "asynchronous"]
+
+[dependencies]
+ara-com = { path = "../ara-com" }
+someip_parse = "0.6"
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "sync", "time"] }
+bytes = "1"
+tracing = "0.1"
+thiserror = "2"
+async-trait = "0.1"
+futures-core = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+tracing-subscriber = "0.3"

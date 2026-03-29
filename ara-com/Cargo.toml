@@ -1,0 +1,19 @@
+[package]
+name = "ara-com"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Core traits and async abstractions for Adaptive AUTOSAR communication in Rust"
+keywords = ["autosar", "automotive", "communication", "someip", "service-oriented"]
+categories = ["asynchronous", "network-programming"]
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["sync"], optional = true }
+futures-core = "0.3"
+
+[features]
+default = ["tokio-runtime"]
+tokio-runtime = ["tokio"]

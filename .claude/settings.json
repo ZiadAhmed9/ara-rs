@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(curl -s \"https://crates.io/api/v1/crates?q=someip&per_page=20\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s \"https://crates.io/api/v1/crates?q=arxml&per_page=20\")",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:hightec-rt.com)",
+      "WebFetch(domain:docs.rs)",
+      "Read(//home/ziad/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/autosar-data-specification-0.21.0/src/**)",
+      "Bash(cargo test:*)"
+    ]
+  }
+}

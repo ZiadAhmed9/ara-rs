@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "cargo-arxml",
+    "ara-com",
+    "ara-com-someip",
+]
+resolver = "2"
