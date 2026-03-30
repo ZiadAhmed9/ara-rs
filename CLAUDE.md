@@ -13,6 +13,7 @@ ara-rs/
 ├── cargo-arxml/       ← CLI + library: ARXML parser, validator, Rust code generator
 ├── ara-com/           ← Core traits + async abstractions (transport-agnostic)
 ├── ara-com-someip/    ← SOME/IP transport backend
+├── Documentation/     ← architecture.md, phases.md, testing_strategy.md, problem_statement.md
 └── examples/          ← (planned) battery-service, diagnostics-service, cxx-interop
 ```
 

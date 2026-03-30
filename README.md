@@ -72,7 +72,9 @@ cargo run -p cargo-arxml -- inspect path/to/service.arxml
 
 ## Status
 
-Early development. The core traits, ARXML parser, and serialization framework are functional. Code generation and SOME/IP transport are in progress.
+Active development. The core traits, ARXML parser, serialization framework, and code generation pipeline are functional. SOME/IP transport is in progress.
+
+Code generation (`types.rs`, `traits.rs`, `proxy.rs`, `skeleton.rs`, `tests_gen.rs`) produces structs/enums with `AraSerialize`/`AraDeserialize` impls, async service traits, and typed proxy/skeleton wrappers from ARXML input. 31 tests pass (24 `ara-com` unit tests + 7 `cargo-arxml` integration tests against `tests/fixtures/battery_service.arxml`).
 
 ## License
 

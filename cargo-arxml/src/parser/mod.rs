@@ -505,10 +505,24 @@ fn extract_struct_fields(element: &autosar_data::Element) -> Vec<ir::StructField
             None => continue,
         };
 
+        // Try TYPE-TREF first, then fall back to IMPLEMENTATION-DATA-TYPE-REF
+        // inside SW-DATA-DEF-PROPS (the standard AUTOSAR structure).
         let type_ref = sub
             .get_sub_element(ElementName::TypeTref)
             .and_then(|e| e.character_data())
             .and_then(|cd| cd.string_value())
+            .or_else(|| {
+                sub.get_sub_element(ElementName::SwDataDefProps)
+                    .and_then(|p| p.get_sub_element(ElementName::SwDataDefPropsVariants))
+                    .and_then(|v| {
+                        v.sub_elements().find(|e| {
+                            e.element_name() == ElementName::SwDataDefPropsConditional
+                        })
+                    })
+                    .and_then(|c| c.get_sub_element(ElementName::ImplementationDataTypeRef))
+                    .and_then(|e| e.character_data())
+                    .and_then(|cd| cd.string_value())
+            })
             .unwrap_or_default();
 
         fields.push(ir::StructField { name, type_ref });
