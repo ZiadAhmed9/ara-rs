@@ -2,10 +2,10 @@ use std::path::Path;
 
 use autosar_data::{AutosarModel, ElementName, EnumItem};
 
-use crate::error::CargoArxmlError;
 use self::ir::{
-    ArxmlProject, DataType, Event, Field, Method, Parameter, ParamDirection, ServiceInterface,
+    ArxmlProject, DataType, Event, Field, Method, ParamDirection, Parameter, ServiceInterface,
 };
+use crate::error::CargoArxmlError;
 
 pub mod ir;
 
@@ -47,10 +47,7 @@ impl ArxmlParser {
 
             if !found_any {
                 return Err(CargoArxmlError::Config {
-                    message: format!(
-                        "no .arxml files found in directory '{}'",
-                        path.display()
-                    ),
+                    message: format!("no .arxml files found in directory '{}'", path.display()),
                 });
             }
         } else {
@@ -58,7 +55,10 @@ impl ArxmlParser {
             source_files.push(path.display().to_string());
         }
 
-        Ok(Self { model, source_files })
+        Ok(Self {
+            model,
+            source_files,
+        })
     }
 
     fn load_single_file(model: &AutosarModel, path: &Path) -> Result<(), CargoArxmlError> {
@@ -163,11 +163,10 @@ impl ArxmlParser {
     fn extract_methods(&self, service_element: &autosar_data::Element) -> Vec<Method> {
         let mut methods = Vec::new();
 
-        let methods_container =
-            match service_element.get_sub_element(ElementName::Methods) {
-                Some(m) => m,
-                None => return methods,
-            };
+        let methods_container = match service_element.get_sub_element(ElementName::Methods) {
+            Some(m) => m,
+            None => return methods,
+        };
 
         for child in methods_container.sub_elements() {
             if child.element_name() != ElementName::ClientServerOperation {
@@ -217,11 +216,10 @@ impl ArxmlParser {
         let mut input_params: Vec<Parameter> = Vec::new();
         let mut output_params: Vec<Parameter> = Vec::new();
 
-        let params_container =
-            match operation.get_sub_element(ElementName::Arguments) {
-                Some(p) => p,
-                None => return (input_params, output_params),
-            };
+        let params_container = match operation.get_sub_element(ElementName::Arguments) {
+            Some(p) => p,
+            None => return (input_params, output_params),
+        };
 
         for param in params_container.sub_elements() {
             if param.element_name() != ElementName::ArgumentDataPrototype {
@@ -279,11 +277,10 @@ impl ArxmlParser {
     fn extract_events(&self, service_element: &autosar_data::Element) -> Vec<Event> {
         let mut events = Vec::new();
 
-        let events_container =
-            match service_element.get_sub_element(ElementName::Events) {
-                Some(e) => e,
-                None => return events,
-            };
+        let events_container = match service_element.get_sub_element(ElementName::Events) {
+            Some(e) => e,
+            None => return events,
+        };
 
         for child in events_container.sub_elements() {
             // Events in a ServiceInterface are VariableDataPrototype elements.
@@ -337,11 +334,10 @@ impl ArxmlParser {
     fn extract_fields(&self, service_element: &autosar_data::Element) -> Vec<Field> {
         let mut fields = Vec::new();
 
-        let fields_container =
-            match service_element.get_sub_element(ElementName::Fields) {
-                Some(f) => f,
-                None => return fields,
-            };
+        let fields_container = match service_element.get_sub_element(ElementName::Fields) {
+            Some(f) => f,
+            None => return fields,
+        };
 
         for child in fields_container.sub_elements() {
             if child.element_name() != ElementName::Field {
@@ -422,10 +418,8 @@ impl ArxmlParser {
                     .get_sub_element(ElementName::SwDataDefProps)
                     .and_then(|p| p.get_sub_element(ElementName::SwDataDefPropsVariants))
                     .and_then(|v| {
-                        v.sub_elements().find(|e| {
-                            e.element_name()
-                                == ElementName::SwDataDefPropsConditional
-                        })
+                        v.sub_elements()
+                            .find(|e| e.element_name() == ElementName::SwDataDefPropsConditional)
                     })
                     .and_then(|c| c.get_sub_element(ElementName::BaseTypeRef))
                     .and_then(|e| e.character_data())
@@ -515,9 +509,8 @@ fn extract_struct_fields(element: &autosar_data::Element) -> Vec<ir::StructField
                 sub.get_sub_element(ElementName::SwDataDefProps)
                     .and_then(|p| p.get_sub_element(ElementName::SwDataDefPropsVariants))
                     .and_then(|v| {
-                        v.sub_elements().find(|e| {
-                            e.element_name() == ElementName::SwDataDefPropsConditional
-                        })
+                        v.sub_elements()
+                            .find(|e| e.element_name() == ElementName::SwDataDefPropsConditional)
                     })
                     .and_then(|c| c.get_sub_element(ElementName::ImplementationDataTypeRef))
                     .and_then(|e| e.character_data())

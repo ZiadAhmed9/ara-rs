@@ -60,7 +60,10 @@ pub fn generate_skeleton(svc: &ServiceInterface) -> Result<String, CargoArxmlErr
     };
 
     let file: syn::File = syn::parse2(tokens).map_err(|e| CargoArxmlError::CodeGen {
-        message: format!("failed to parse generated skeleton for '{}': {e}", svc.short_name),
+        message: format!(
+            "failed to parse generated skeleton for '{}': {e}",
+            svc.short_name
+        ),
     })?;
 
     Ok(prettyplease::unparse(&file))

@@ -36,10 +36,7 @@ pub fn generate_types(project: &ArxmlProject) -> Result<String, CargoArxmlError>
 // Per-type generation
 // ---------------------------------------------------------------------------
 
-fn generate_type(
-    dt: &DataType,
-    project: &ArxmlProject,
-) -> Result<TokenStream, String> {
+fn generate_type(dt: &DataType, project: &ArxmlProject) -> Result<TokenStream, String> {
     let type_name = Ident::new(&dt.name, Span::call_site());
     let doc = dt
         .description
@@ -67,12 +64,10 @@ fn generate_type(
             })
         }
 
-        DataTypeKind::String { .. } => {
-            Ok(quote! {
-                #doc
-                pub type #type_name = String;
-            })
-        }
+        DataTypeKind::String { .. } => Ok(quote! {
+            #doc
+            pub type #type_name = String;
+        }),
 
         DataTypeKind::Array {
             element_type_ref,
@@ -114,9 +109,8 @@ fn generate_type(
                 .map(|f| {
                     let field_name = Ident::new(&snake_case(&f.name), Span::call_site());
                     let field_type_name = resolve_type_name(&f.type_ref, project);
-                    let field_type: TokenStream = field_type_name
-                        .parse()
-                        .unwrap_or_else(|_| quote! { () });
+                    let field_type: TokenStream =
+                        field_type_name.parse().unwrap_or_else(|_| quote! { () });
                     quote! { pub #field_name: #field_type, }
                 })
                 .collect();

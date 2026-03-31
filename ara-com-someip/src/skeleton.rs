@@ -16,6 +16,7 @@ use crate::transport::SomeIpTransport;
 /// Holds a shared reference to the transport and the identity of the service
 /// instance it hosts. The application's handler functions are registered via
 /// `Transport::register_request_handler` once the receive loop is running.
+#[allow(dead_code)]
 pub struct SomeIpSkeleton {
     transport: Arc<SomeIpTransport>,
     service_id: ServiceId,

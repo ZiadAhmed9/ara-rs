@@ -6,9 +6,7 @@ use crate::parser::ir::ArxmlProject;
 
 #[derive(Debug, Clone, Error)]
 pub enum ValidationError {
-    #[error(
-        "duplicate service ID {id:#06x} used by both '{service_name}' and another service"
-    )]
+    #[error("duplicate service ID {id:#06x} used by both '{service_name}' and another service")]
     DuplicateServiceId { service_name: String, id: u16 },
 
     #[error("element '{element_path}' references missing type '{type_ref}'")]
@@ -20,9 +18,7 @@ pub enum ValidationError {
     #[error("service interface '{service_name}' has no methods, events, or fields")]
     EmptyServiceInterface { service_name: String },
 
-    #[error(
-        "service '{service_name}' method '{method_name}' has invalid method ID {id}"
-    )]
+    #[error("service '{service_name}' method '{method_name}' has invalid method ID {id}")]
     InvalidMethodId {
         service_name: String,
         method_name: String,
@@ -68,10 +64,7 @@ fn check_duplicate_service_ids(project: &ArxmlProject, errors: &mut Vec<Validati
     }
 }
 
-fn check_empty_service_interfaces(
-    project: &ArxmlProject,
-    errors: &mut Vec<ValidationError>,
-) {
+fn check_empty_service_interfaces(project: &ArxmlProject, errors: &mut Vec<ValidationError>) {
     for svc in &project.services {
         if svc.methods.is_empty() && svc.events.is_empty() && svc.fields.is_empty() {
             errors.push(ValidationError::EmptyServiceInterface {

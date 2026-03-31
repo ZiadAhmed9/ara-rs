@@ -3,12 +3,7 @@ use std::process;
 
 use clap::{Parser, Subcommand};
 
-use cargo_arxml::{
-    codegen::CodeGenerator,
-    error::CargoArxmlError,
-    parser::ArxmlParser,
-    validator,
-};
+use cargo_arxml::{codegen::CodeGenerator, error::CargoArxmlError, parser::ArxmlParser, validator};
 
 // ---------------------------------------------------------------------------
 // CLI definition
@@ -147,7 +142,11 @@ fn run_generate(
         println!("  wrote {}", dest.display());
     }
 
-    println!("Generated {} file(s) into '{}'.", files.len(), output_dir.display());
+    println!(
+        "Generated {} file(s) into '{}'.",
+        files.len(),
+        output_dir.display()
+    );
     Ok(())
 }
 
@@ -157,10 +156,8 @@ fn run_inspect(path: &std::path::Path) -> Result<(), CargoArxmlError> {
     let parser = ArxmlParser::load(path)?;
     let project = parser.extract_ir()?;
 
-    let json = serde_json::to_string_pretty(&project).map_err(|e| {
-        CargoArxmlError::CodeGen {
-            message: format!("JSON serialization failed: {e}"),
-        }
+    let json = serde_json::to_string_pretty(&project).map_err(|e| CargoArxmlError::CodeGen {
+        message: format!("JSON serialization failed: {e}"),
     })?;
 
     println!("{json}");

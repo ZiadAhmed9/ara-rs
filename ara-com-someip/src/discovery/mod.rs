@@ -14,6 +14,7 @@ use crate::config::SdConfig;
 ///
 /// Tracks which services are locally offered and which remote services have
 /// been discovered. Will be driven by a background tokio task in Week 7.
+#[allow(dead_code)]
 pub struct ServiceDiscovery {
     config: SdConfig,
     /// Locally offered services: (service_id, instance_id) → metadata

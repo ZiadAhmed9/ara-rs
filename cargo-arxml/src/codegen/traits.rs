@@ -71,9 +71,7 @@ fn generate_method_sig(method: &Method, project: &ArxmlProject) -> TokenStream {
         .map(|p| {
             let pname = Ident::new(&snake_case(&p.name), Span::call_site());
             let ptype_str = resolve_type_name(&p.type_ref, project);
-            let ptype: TokenStream = ptype_str
-                .parse()
-                .unwrap_or_else(|_| quote! { () });
+            let ptype: TokenStream = ptype_str.parse().unwrap_or_else(|_| quote! { () });
             quote! { #pname: #ptype, }
         })
         .collect();

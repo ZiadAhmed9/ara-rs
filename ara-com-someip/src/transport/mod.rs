@@ -17,6 +17,7 @@ use crate::config::SomeIpConfig;
 /// Wraps the per-service configuration and will hold UDP/TCP sockets, session
 /// tracking tables, and the SD task handle once the full implementation lands
 /// in Weeks 5–7.
+#[allow(dead_code)]
 pub struct SomeIpTransport {
     config: SomeIpConfig,
     // TODO (Week 5): UdpSocket for the unicast receive port

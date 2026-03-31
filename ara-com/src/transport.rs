@@ -1,7 +1,7 @@
+use crate::error::AraComError;
+use crate::types::*;
 use async_trait::async_trait;
 use bytes::Bytes;
-use crate::types::*;
-use crate::error::AraComError;
 
 /// Message metadata for routing
 #[derive(Debug, Clone)]
@@ -105,7 +105,11 @@ pub trait Transport: Send + Sync + 'static {
         service_id: ServiceId,
         instance_id: InstanceId,
         handler: Box<
-            dyn Fn(MessageHeader, Bytes) -> futures_core::future::BoxFuture<'static, Result<Bytes, AraComError>>
+            dyn Fn(
+                    MessageHeader,
+                    Bytes,
+                )
+                    -> futures_core::future::BoxFuture<'static, Result<Bytes, AraComError>>
                 + Send
                 + Sync,
         >,

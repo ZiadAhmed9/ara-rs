@@ -15,6 +15,7 @@ use crate::transport::SomeIpTransport;
 ///
 /// Holds a shared reference to the transport so multiple proxy instances for
 /// different service instances can share a single socket pair.
+#[allow(dead_code)]
 pub struct SomeIpProxy {
     transport: Arc<SomeIpTransport>,
     service_id: ServiceId,

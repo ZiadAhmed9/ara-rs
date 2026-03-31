@@ -37,11 +37,7 @@ pub fn generate_proxy(svc: &ServiceInterface) -> Result<String, CargoArxmlError>
     }
 
     // Event subscribe methods (no struct defs needed)
-    let event_impls: Vec<TokenStream> = svc
-        .events
-        .iter()
-        .map(generate_event_subscribe)
-        .collect();
+    let event_impls: Vec<TokenStream> = svc.events.iter().map(generate_event_subscribe).collect();
 
     let tokens = quote! {
         use std::sync::Arc;
@@ -75,7 +71,10 @@ pub fn generate_proxy(svc: &ServiceInterface) -> Result<String, CargoArxmlError>
     };
 
     let file: syn::File = syn::parse2(tokens).map_err(|e| CargoArxmlError::CodeGen {
-        message: format!("failed to parse generated proxy for '{}': {e}", svc.short_name),
+        message: format!(
+            "failed to parse generated proxy for '{}': {e}",
+            svc.short_name
+        ),
     })?;
 
     Ok(prettyplease::unparse(&file))
@@ -90,10 +89,7 @@ fn generate_proxy_method(
     project: &crate::parser::ir::ArxmlProject,
 ) -> (TokenStream, TokenStream) {
     let method_fn_name = Ident::new(&snake_case(&method.name), Span::call_site());
-    let req_struct_name = Ident::new(
-        &format!("{}Request", method.name),
-        Span::call_site(),
-    );
+    let req_struct_name = Ident::new(&format!("{}Request", method.name), Span::call_site());
     let method_id_val = method.method_id.unwrap_or(0);
     let method_id_lit = Literal::u16_unsuffixed(method_id_val);
 
@@ -215,10 +211,7 @@ fn generate_proxy_method(
         (req_struct_defs, method_body)
     } else {
         let return_type = build_return_type_tokens(&method.output_params, project);
-        let resp_struct_name = Ident::new(
-            &format!("{}Response", method.name),
-            Span::call_site(),
-        );
+        let resp_struct_name = Ident::new(&format!("{}Response", method.name), Span::call_site());
 
         let resp_fields: Vec<TokenStream> = method
             .output_params

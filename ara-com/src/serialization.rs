@@ -174,11 +174,10 @@ impl AraDeserialize for String {
                 ),
             });
         }
-        let s = std::str::from_utf8(&buf[4..4 + len]).map_err(|e| {
-            AraComError::Deserialization {
+        let s =
+            std::str::from_utf8(&buf[4..4 + len]).map_err(|e| AraComError::Deserialization {
                 message: format!("String is not valid UTF-8: {e}"),
-            }
-        })?;
+            })?;
         Ok(s.to_owned())
     }
 }
@@ -198,7 +197,10 @@ impl<T: AraSerialize> AraSerialize for Vec<T> {
     }
 
     fn serialized_size(&self) -> usize {
-        4 + self.iter().map(|item| item.serialized_size()).sum::<usize>()
+        4 + self
+            .iter()
+            .map(|item| item.serialized_size())
+            .sum::<usize>()
     }
 }
 

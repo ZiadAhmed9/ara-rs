@@ -1,5 +1,5 @@
-use thiserror::Error;
 use crate::types::*;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AraComError {
@@ -31,7 +31,9 @@ pub enum AraComError {
     Application { code: u8, message: String },
 
     #[error("protocol error: return_code={return_code:?}")]
-    Protocol { return_code: crate::transport::ReturnCode },
+    Protocol {
+        return_code: crate::transport::ReturnCode,
+    },
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

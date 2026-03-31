@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use crate::method::{MethodConfig, MethodResult};
 use crate::service::ServiceDefinition;
-use crate::transport::{AraDeserialize, AraSerialize, MessageHeader, MessageType, ReturnCode, Transport};
+use crate::transport::{
+    AraDeserialize, AraSerialize, MessageHeader, MessageType, ReturnCode, Transport,
+};
 use crate::types::*;
 
 /// Base proxy that generated proxies wrap.
@@ -35,7 +37,11 @@ impl<T: Transport> ProxyBase<T> {
     }
 
     /// Create a new `ProxyBase` with default `MethodConfig`.
-    pub fn with_defaults(transport: Arc<T>, service_id: ServiceId, instance_id: InstanceId) -> Self {
+    pub fn with_defaults(
+        transport: Arc<T>,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+    ) -> Self {
         Self::new(transport, service_id, instance_id, MethodConfig::default())
     }
 
@@ -83,8 +89,10 @@ impl<T: Transport> ProxyBase<T> {
             return_code: ReturnCode::Ok,
         };
 
-        let (_resp_header, resp_payload) =
-            self.transport.send_request(header, Bytes::from(buf)).await?;
+        let (_resp_header, resp_payload) = self
+            .transport
+            .send_request(header, Bytes::from(buf))
+            .await?;
 
         let result = Resp::ara_deserialize(&resp_payload)?;
         Ok(result)

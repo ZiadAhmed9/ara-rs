@@ -1,5 +1,5 @@
-use crate::types::*;
 use crate::error::AraComError;
+use crate::types::*;
 use futures_core::Stream;
 use std::pin::Pin;
 

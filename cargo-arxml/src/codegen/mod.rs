@@ -5,9 +5,9 @@ use crate::parser::ir::ArxmlProject;
 
 pub mod proxy;
 pub mod skeleton;
+pub mod tests_gen;
 pub mod traits;
 pub mod types;
-pub mod tests_gen;
 
 /// Top-level code generator.
 ///
