@@ -2,7 +2,7 @@ use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::quote;
 
 use crate::error::CargoArxmlError;
-use crate::parser::ir::{Method, ServiceInterface};
+use crate::parser::ir::{ArxmlProject, Method, ServiceInterface};
 
 use super::snake_case;
 use super::types::resolve_type_name;
@@ -11,9 +11,7 @@ use super::types::resolve_type_name;
 ///
 /// The proxy is the client-side handle used to call methods and subscribe to
 /// events on a remote service.
-pub fn generate_proxy(svc: &ServiceInterface) -> Result<String, CargoArxmlError> {
-    let empty_project = crate::parser::ir::ArxmlProject::default();
-
+pub fn generate_proxy(svc: &ServiceInterface, project: &ArxmlProject) -> Result<String, CargoArxmlError> {
     let struct_name_str = format!("{}Proxy", svc.short_name);
     let struct_name = Ident::new(&struct_name_str, Span::call_site());
 
@@ -31,7 +29,7 @@ pub fn generate_proxy(svc: &ServiceInterface) -> Result<String, CargoArxmlError>
     let mut all_method_bodies: Vec<TokenStream> = Vec::new();
 
     for m in &svc.methods {
-        let (structs, body) = generate_proxy_method(m, &empty_project);
+        let (structs, body) = generate_proxy_method(m, project);
         all_struct_defs.push(structs);
         all_method_bodies.push(body);
     }

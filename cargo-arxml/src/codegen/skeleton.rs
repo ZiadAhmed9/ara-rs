@@ -2,11 +2,11 @@ use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::quote;
 
 use crate::error::CargoArxmlError;
-use crate::parser::ir::ServiceInterface;
+use crate::parser::ir::{ArxmlProject, ServiceInterface};
 
 use super::snake_case;
 
-pub fn generate_skeleton(svc: &ServiceInterface) -> Result<String, CargoArxmlError> {
+pub fn generate_skeleton(svc: &ServiceInterface, _project: &ArxmlProject) -> Result<String, CargoArxmlError> {
     let struct_name_str = format!("{}Skeleton", svc.short_name);
     let struct_name = Ident::new(&struct_name_str, Span::call_site());
 
@@ -22,13 +22,13 @@ pub fn generate_skeleton(svc: &ServiceInterface) -> Result<String, CargoArxmlErr
     let major_lit = Literal::u8_unsuffixed(svc.major_version);
     let minor_lit = Literal::u32_unsuffixed(svc.minor_version);
 
-    let event_impls: Vec<TokenStream> = svc.events.iter().map(generate_event_notify).collect();
+    let event_impls: Vec<TokenStream> = svc.events.iter().map(|e| generate_event_notify(e, svc)).collect();
 
     let tokens = quote! {
         use std::sync::Arc;
         use ara_com::skeleton::SkeletonBase;
-        use ara_com::transport::Transport;
-        use ara_com::types::{InstanceId, ServiceId, MajorVersion, MinorVersion};
+        use ara_com::transport::{Transport, AraSerialize, MessageHeader, MessageType, ReturnCode};
+        use ara_com::types::{InstanceId, MethodId, ServiceId, MajorVersion, MinorVersion};
         use ara_com::error::AraComError;
 
         #doc
@@ -69,7 +69,7 @@ pub fn generate_skeleton(svc: &ServiceInterface) -> Result<String, CargoArxmlErr
     Ok(prettyplease::unparse(&file))
 }
 
-fn generate_event_notify(event: &crate::parser::ir::Event) -> TokenStream {
+fn generate_event_notify(event: &crate::parser::ir::Event, svc: &ServiceInterface) -> TokenStream {
     let notify_fn = Ident::new(
         &format!("notify_{}", snake_case(&event.name)),
         Span::call_site(),
@@ -80,11 +80,25 @@ fn generate_event_notify(event: &crate::parser::ir::Event) -> TokenStream {
         .map(|d| quote! { #[doc = #d] })
         .unwrap_or_default();
 
+    let event_id_val = event.event_id.unwrap_or(0x8001);
+    let event_id_lit = Literal::u16_unsuffixed(event_id_val);
+    let service_id_val = svc.service_id.unwrap_or(0);
+    let service_id_lit = Literal::u16_unsuffixed(service_id_val);
+
     quote! {
         #doc
-        pub async fn #notify_fn(&self) -> Result<(), AraComError> {
-            let _ = &self.base;
-            Ok(())
+        pub async fn #notify_fn(&self, payload: &impl AraSerialize) -> Result<(), AraComError> {
+            let mut buf = Vec::new();
+            payload.ara_serialize(&mut buf)?;
+            let header = MessageHeader {
+                service_id: ServiceId(#service_id_lit),
+                method_id: MethodId(#event_id_lit),
+                instance_id: self.base.instance_id(),
+                session_id: 0,
+                message_type: MessageType::Notification,
+                return_code: ReturnCode::Ok,
+            };
+            self.base.transport().send_notification(header, bytes::Bytes::from(buf)).await
         }
     }
 }

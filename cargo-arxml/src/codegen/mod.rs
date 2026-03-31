@@ -28,32 +28,59 @@ impl<'a> CodeGenerator<'a> {
     /// Returns a `HashMap<filename, source>`.  Filenames are relative paths
     /// (e.g. `"types.rs"`, `"proxy/battery_service.rs"`).
     pub fn generate(&self) -> Result<HashMap<String, String>, CargoArxmlError> {
+        let mut project = self.project.clone();
+        assign_default_ids(&mut project);
+
         let mut output: HashMap<String, String> = HashMap::new();
 
         // Data type definitions
-        let types_src = types::generate_types(self.project)?;
+        let types_src = types::generate_types(&project)?;
         output.insert("types.rs".to_string(), types_src);
 
         // Service traits
-        let traits_src = traits::generate_traits(self.project)?;
+        let traits_src = traits::generate_traits(&project)?;
         output.insert("traits.rs".to_string(), traits_src);
 
         // Per-service proxy and skeleton stubs
-        for svc in &self.project.services {
-            let proxy_src = proxy::generate_proxy(svc)?;
+        for svc in &project.services {
+            let proxy_src = proxy::generate_proxy(svc, &project)?;
             let proxy_file = format!("proxy/{}.rs", snake_case(&svc.short_name));
             output.insert(proxy_file, proxy_src);
 
-            let skeleton_src = skeleton::generate_skeleton(svc)?;
+            let skeleton_src = skeleton::generate_skeleton(svc, &project)?;
             let skeleton_file = format!("skeleton/{}.rs", snake_case(&svc.short_name));
             output.insert(skeleton_file, skeleton_src);
         }
 
         // Test scaffolding
-        let tests_src = tests_gen::generate_tests(self.project)?;
+        let tests_src = tests_gen::generate_tests(&project)?;
         output.insert("tests.rs".to_string(), tests_src);
 
         Ok(output)
+    }
+}
+
+/// Assign default SOME/IP IDs to services, methods, and events that don't have them.
+/// Uses sequential assignment: service IDs start at 0x1000, method IDs at 0x0001,
+/// event IDs at 0x8001 (events use the 0x8000+ range per SOME/IP spec).
+pub fn assign_default_ids(project: &mut ArxmlProject) {
+    for (svc_idx, svc) in project.services.iter_mut().enumerate() {
+        if svc.service_id.is_none() {
+            svc.service_id = Some(0x1000 + svc_idx as u16);
+        }
+        for (m_idx, method) in svc.methods.iter_mut().enumerate() {
+            if method.method_id.is_none() {
+                method.method_id = Some(1 + m_idx as u16);
+            }
+        }
+        for (e_idx, event) in svc.events.iter_mut().enumerate() {
+            if event.event_id.is_none() {
+                event.event_id = Some(0x8001 + e_idx as u16);
+            }
+            if event.event_group_id.is_none() {
+                event.event_group_id = Some(1 + e_idx as u16);
+            }
+        }
     }
 }
 
