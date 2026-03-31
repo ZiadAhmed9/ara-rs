@@ -3,5 +3,6 @@ members = [
     "cargo-arxml",
     "ara-com",
     "ara-com-someip",
+    "examples/battery-service",
 ]
 resolver = "2"

@@ -13,7 +13,7 @@ use ara_com::error::AraComError;
 use ara_com::transport::{
     AraDeserialize, AraSerialize, MessageHeader, MessageType, ReturnCode, Transport,
 };
-use ara_com::types::{InstanceId, MajorVersion, MethodId, MinorVersion, ServiceId};
+use ara_com::types::{EventGroupId, InstanceId, MajorVersion, MethodId, MinorVersion, ServiceId};
 
 use ara_com_someip::config::{
     EndpointConfig, RemoteServiceConfig, SdConfig, ServiceConfig, SomeIpConfig,
@@ -23,6 +23,9 @@ use ara_com_someip::transport::SomeIpTransport;
 const SERVICE_ID: ServiceId = ServiceId(0x1234);
 const INSTANCE_ID: InstanceId = InstanceId(0x0001);
 const METHOD_ID: MethodId = MethodId(0x0001);
+/// Notifications use method IDs in the 0x8000+ range per SOME/IP spec.
+const EVENT_ID: MethodId = MethodId(0x8001);
+const EVENT_GROUP_ID: EventGroupId = EventGroupId(0x0001);
 
 /// Create a config for the skeleton side (binds to a specific port).
 fn skeleton_config(port: u16) -> SomeIpConfig {
@@ -235,4 +238,111 @@ async fn test_offer_and_stop_service_static() {
         .stop_offer_service(SERVICE_ID, INSTANCE_ID)
         .await
         .expect("stop_offer_service failed");
+}
+
+#[tokio::test]
+async fn test_notification_delivery() {
+    // --- Skeleton side (event producer) ---
+    let mut skeleton = SomeIpTransport::new(skeleton_config(0));
+    skeleton.bind().await.expect("skeleton bind failed");
+    let skeleton_port = skeleton
+        .local_addr()
+        .expect("skeleton has no local addr")
+        .port();
+
+    // --- Proxy side (event consumer) ---
+    // The proxy config points at the skeleton so subscribe_event_group can
+    // validate the endpoint exists in static mode.
+    let mut proxy = SomeIpTransport::new(proxy_config(skeleton_port));
+    proxy.bind().await.expect("proxy bind failed");
+    let proxy_addr = proxy
+        .local_addr()
+        .expect("proxy has no local addr");
+
+    // Proxy registers a handler so it can receive incoming Notification messages.
+    let received_payload = Arc::new(tokio::sync::Mutex::new(None::<Bytes>));
+    let received_payload_clone = received_payload.clone();
+    let notify_signal = Arc::new(tokio::sync::Notify::new());
+    let notify_signal_clone = notify_signal.clone();
+
+    proxy
+        .register_request_handler(
+            SERVICE_ID,
+            INSTANCE_ID,
+            Box::new(move |_hdr, payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
+                let store = received_payload_clone.clone();
+                let signal = notify_signal_clone.clone();
+                Box::pin(async move {
+                    *store.lock().await = Some(payload);
+                    signal.notify_one();
+                    Ok(Bytes::new())
+                })
+            }),
+        )
+        .await
+        .unwrap();
+
+    // Proxy subscribes (static mode — just validates config exists).
+    proxy
+        .subscribe_event_group(SERVICE_ID, INSTANCE_ID, EVENT_GROUP_ID)
+        .await
+        .expect("subscribe_event_group failed");
+
+    // Skeleton registers the proxy as an event subscriber.
+    // We need a SocketAddrV4 — extract it from the SocketAddr.
+    let proxy_v4 = match proxy_addr {
+        std::net::SocketAddr::V4(a) => a,
+        std::net::SocketAddr::V6(_) => panic!("expected IPv4 loopback address"),
+    };
+    skeleton.add_event_subscriber(SERVICE_ID, EVENT_GROUP_ID, proxy_v4);
+
+    // Skeleton sends a notification event.
+    let event_payload = Bytes::from_static(b"\xDE\xAD\xBE\xEF");
+    let notif_header = MessageHeader {
+        service_id: SERVICE_ID,
+        method_id: EVENT_ID,
+        instance_id: INSTANCE_ID,
+        session_id: 0,
+        message_type: MessageType::Notification,
+        return_code: ReturnCode::Ok,
+    };
+
+    skeleton
+        .send_notification(notif_header, event_payload.clone())
+        .await
+        .expect("send_notification failed");
+
+    // Proxy should receive the notification within 2 s.
+    tokio::time::timeout(std::time::Duration::from_secs(2), notify_signal.notified())
+        .await
+        .expect("proxy did not receive notification within 2s");
+
+    let received = received_payload
+        .lock()
+        .await
+        .take()
+        .expect("handler fired but payload was not stored");
+    assert_eq!(received, event_payload, "notification payload mismatch");
+
+    // Clean up: verify unsubscribe does not error.
+    proxy
+        .unsubscribe_event_group(SERVICE_ID, INSTANCE_ID, EVENT_GROUP_ID)
+        .await
+        .expect("unsubscribe_event_group failed");
+
+    // After unsubscribe, skeleton should see the subscriber removed.
+    skeleton.remove_event_subscriber(SERVICE_ID, EVENT_GROUP_ID, &proxy_v4);
+    // Sending again to zero subscribers should succeed (not an error).
+    let notif_header2 = MessageHeader {
+        service_id: SERVICE_ID,
+        method_id: EVENT_ID,
+        instance_id: INSTANCE_ID,
+        session_id: 0,
+        message_type: MessageType::Notification,
+        return_code: ReturnCode::Ok,
+    };
+    skeleton
+        .send_notification(notif_header2, Bytes::new())
+        .await
+        .expect("send_notification with zero subscribers should return Ok");
 }

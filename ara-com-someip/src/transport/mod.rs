@@ -13,7 +13,7 @@ use futures_core::future::BoxFuture;
 use tokio::net::UdpSocket;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use ara_com::error::AraComError;
 use ara_com::transport::{MessageHeader, MessageType, ReturnCode, Transport};
@@ -62,6 +62,8 @@ pub struct SomeIpTransport {
     request_handlers: Arc<DashMap<(ServiceId, InstanceId), RequestHandler>>,
     /// Locally offered services for static mode.
     offered_services: Arc<DashMap<(ServiceId, InstanceId), (MajorVersion, MinorVersion)>>,
+    /// Event subscribers: (service_id, event_group_id) → list of subscriber endpoints.
+    event_subscribers: Arc<DashMap<(ServiceId, EventGroupId), Vec<SocketAddrV4>>>,
     /// Background receive loop handle (for shutdown).
     recv_handle: Option<JoinHandle<()>>,
 }
@@ -78,6 +80,7 @@ impl SomeIpTransport {
             pending_requests: Arc::new(DashMap::new()),
             request_handlers: Arc::new(DashMap::new()),
             offered_services: Arc::new(DashMap::new()),
+            event_subscribers: Arc::new(DashMap::new()),
             recv_handle: None,
         }
     }
@@ -291,6 +294,36 @@ impl SomeIpTransport {
             .and_then(|rs| rs.endpoint.udp)
     }
 
+    /// Register a remote endpoint as a subscriber for skeleton-side event delivery.
+    ///
+    /// Called by SD or static config to add a consumer that should receive
+    /// notifications for `(service_id, event_group_id)`.
+    pub fn add_event_subscriber(
+        &self,
+        service_id: ServiceId,
+        event_group_id: EventGroupId,
+        endpoint: SocketAddrV4,
+    ) {
+        self.event_subscribers
+            .entry((service_id, event_group_id))
+            .or_default()
+            .push(endpoint);
+        debug!(%service_id, %event_group_id, %endpoint, "event subscriber added");
+    }
+
+    /// Remove a previously registered event subscriber.
+    pub fn remove_event_subscriber(
+        &self,
+        service_id: ServiceId,
+        event_group_id: EventGroupId,
+        endpoint: &SocketAddrV4,
+    ) {
+        if let Some(mut subs) = self.event_subscribers.get_mut(&(service_id, event_group_id)) {
+            subs.retain(|e| e != endpoint);
+        }
+        debug!(%service_id, %event_group_id, %endpoint, "event subscriber removed");
+    }
+
     /// Construct and send a SOME/IP datagram.
     async fn send_datagram(
         &self,
@@ -386,11 +419,47 @@ impl Transport for SomeIpTransport {
 
     async fn send_notification(
         &self,
-        _header: MessageHeader,
-        _payload: Bytes,
+        mut header: MessageHeader,
+        payload: Bytes,
     ) -> Result<(), AraComError> {
-        // TODO (Week 7): look up subscriber list, send to each
-        todo!("send_notification: event notification delivery not yet implemented")
+        header.message_type = MessageType::Notification;
+        // Notifications use session_id 0 per AUTOSAR SOME/IP spec (§4.2.1).
+        header.session_id = 0;
+
+        // Collect all subscribers for this service across all event groups.
+        // At the transport layer the method_id already identifies the event;
+        // event_group demux is handled at the SD / skeleton layer, so we
+        // broadcast to every subscriber registered for this service_id.
+        let destinations: Vec<SocketAddrV4> = self
+            .event_subscribers
+            .iter()
+            .filter(|entry| entry.key().0 == header.service_id)
+            .flat_map(|entry| entry.value().clone())
+            .collect();
+
+        if destinations.is_empty() {
+            debug!(
+                service_id = %header.service_id,
+                method_id  = %header.method_id,
+                "send_notification: no subscribers — dropping notification"
+            );
+            return Ok(());
+        }
+
+        info!(
+            service_id   = %header.service_id,
+            method_id    = %header.method_id,
+            n_subscribers = destinations.len(),
+            "sending SOME/IP notification"
+        );
+
+        for dest in destinations {
+            if let Err(e) = self.send_datagram(&header, &payload, dest).await {
+                warn!(error = %e, %dest, "failed to deliver notification to subscriber");
+            }
+        }
+
+        Ok(())
     }
 
     async fn offer_service(
@@ -486,22 +555,56 @@ impl Transport for SomeIpTransport {
 
     async fn subscribe_event_group(
         &self,
-        _service_id: ServiceId,
-        _instance_id: InstanceId,
-        _event_group_id: EventGroupId,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        event_group_id: EventGroupId,
     ) -> Result<(), AraComError> {
-        // TODO (Week 7): SD SubscribeEventgroup
-        todo!("subscribe_event_group: SOME/IP-SD SubscribeEventgroup not yet implemented")
+        match self.config.discovery_mode {
+            DiscoveryMode::Static => {
+                // In static mode the subscription is implicitly configured.
+                // Verify the remote service endpoint is known so we can surface
+                // misconfigurations early.
+                if self.resolve_endpoint(service_id, instance_id).is_none() {
+                    return Err(AraComError::ServiceNotAvailable {
+                        service_id,
+                        instance_id,
+                    });
+                }
+                debug!(
+                    %service_id, %instance_id, %event_group_id,
+                    "subscribed to event group (static mode — implicit subscription)"
+                );
+                Ok(())
+            }
+            DiscoveryMode::SomeIpSd => {
+                // TODO (Week 7): SD SubscribeEventgroup
+                todo!("subscribe_event_group: SOME/IP-SD SubscribeEventgroup not yet implemented")
+            }
+        }
     }
 
     async fn unsubscribe_event_group(
         &self,
-        _service_id: ServiceId,
-        _instance_id: InstanceId,
-        _event_group_id: EventGroupId,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        event_group_id: EventGroupId,
     ) -> Result<(), AraComError> {
-        // TODO (Week 7): SD StopSubscribeEventgroup
-        todo!("unsubscribe_event_group: SOME/IP-SD StopSubscribeEventgroup not yet implemented")
+        match self.config.discovery_mode {
+            DiscoveryMode::Static => {
+                // Remove any subscriber entry keyed on this service + event group.
+                self.event_subscribers
+                    .remove(&(service_id, event_group_id));
+                debug!(
+                    %service_id, %instance_id, %event_group_id,
+                    "unsubscribed from event group (static mode)"
+                );
+                Ok(())
+            }
+            DiscoveryMode::SomeIpSd => {
+                // TODO (Week 7): SD StopSubscribeEventgroup
+                todo!("unsubscribe_event_group: SOME/IP-SD StopSubscribeEventgroup not yet implemented")
+            }
+        }
     }
 }
 

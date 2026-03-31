@@ -4,6 +4,8 @@
 //! is implemented in Week 7. This module defines the key data structures and
 //! the `ServiceDiscovery` handle that the transport layer will drive.
 
+pub mod message;
+
 use std::collections::HashMap;
 
 use ara_com::types::{InstanceId, MajorVersion, MinorVersion, ServiceId};
