@@ -1,158 +1,514 @@
 //! SOME/IP transport implementation of the `ara_com::transport::Transport` trait.
 
+pub mod header;
+
+use std::net::SocketAddrV4;
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use bytes::Bytes;
+use dashmap::DashMap;
 use futures_core::future::BoxFuture;
+use tokio::net::UdpSocket;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+use tracing::{debug, error, warn};
 
 use ara_com::error::AraComError;
-use ara_com::transport::{MessageHeader, Transport};
+use ara_com::transport::{MessageHeader, MessageType, ReturnCode, Transport};
 use ara_com::types::{
-    EventGroupId, InstanceId, MajorVersion, MinorVersion, ServiceId, ServiceInstanceId,
+    EventGroupId, InstanceId, MajorVersion, MinorVersion, ServiceId,
+    ServiceInstanceId,
 };
 
-use crate::config::SomeIpConfig;
+use crate::config::{DiscoveryMode, SomeIpConfig};
+use crate::error::SomeIpError;
+
+use header::{decode_header, encode_header, DEFAULT_INTERFACE_VERSION, HEADER_LEN};
+
+// ---------------------------------------------------------------------------
+// Type aliases for the handler / pending request maps
+// ---------------------------------------------------------------------------
+
+type RequestHandler = Box<
+    dyn Fn(MessageHeader, Bytes) -> BoxFuture<'static, Result<Bytes, AraComError>>
+        + Send
+        + Sync,
+>;
+
+type PendingResponse = oneshot::Sender<(MessageHeader, Bytes)>;
+
+// ---------------------------------------------------------------------------
+// SomeIpTransport
+// ---------------------------------------------------------------------------
 
 /// SOME/IP transport implementation.
 ///
-/// Wraps the per-service configuration and will hold UDP/TCP sockets, session
-/// tracking tables, and the SD task handle once the full implementation lands
-/// in Weeks 5–7.
-#[allow(dead_code)]
+/// Call [`SomeIpTransport::bind`] after construction to open the UDP socket and
+/// start the background receive loop. Until `bind()` is called, all Transport
+/// methods will return an error.
 pub struct SomeIpTransport {
     config: SomeIpConfig,
-    // TODO (Week 5): UdpSocket for the unicast receive port
-    // TODO (Week 5): pending_requests: DashMap<u16, oneshot::Sender<Bytes>>
-    // TODO (Week 6): tcp_pool: TcpConnectionPool
-    // TODO (Week 7): sd_handle: JoinHandle<()>
+    /// UDP socket for send/receive.
+    udp_socket: Option<Arc<UdpSocket>>,
+    /// Client ID for this application (bytes 8-9 of the SOME/IP header).
+    client_id: u16,
+    /// Monotonically increasing session counter for request correlation.
+    session_counter: AtomicU16,
+    /// Pending request→response correlation table: session_id → oneshot sender.
+    pending_requests: Arc<DashMap<u16, PendingResponse>>,
+    /// Registered request handlers: (service_id, instance_id) → handler fn.
+    request_handlers: Arc<DashMap<(ServiceId, InstanceId), RequestHandler>>,
+    /// Locally offered services for static mode.
+    offered_services: Arc<DashMap<(ServiceId, InstanceId), (MajorVersion, MinorVersion)>>,
+    /// Background receive loop handle (for shutdown).
+    recv_handle: Option<JoinHandle<()>>,
 }
 
 impl SomeIpTransport {
-    /// Create a new transport with the given configuration.
-    ///
-    /// Sockets and the SD background task are not yet started here; that will
-    /// happen in a dedicated `bind()` / `run()` method in Week 5.
+    /// Create a new transport. Call [`bind`](Self::bind) to start the socket.
     pub fn new(config: SomeIpConfig) -> Self {
-        Self { config }
+        let client_id = config.client_id;
+        Self {
+            config,
+            udp_socket: None,
+            client_id,
+            session_counter: AtomicU16::new(1),
+            pending_requests: Arc::new(DashMap::new()),
+            request_handlers: Arc::new(DashMap::new()),
+            offered_services: Arc::new(DashMap::new()),
+            recv_handle: None,
+        }
+    }
+
+    /// Bind the UDP socket and start the background receive loop.
+    ///
+    /// Binds to `0.0.0.0:{port}` where port is taken from the first local
+    /// service endpoint, or a random port if no services are configured.
+    pub async fn bind(&mut self) -> Result<(), SomeIpError> {
+        let bind_addr = self
+            .config
+            .services
+            .first()
+            .and_then(|s| s.endpoint.udp)
+            .map(|addr| format!("0.0.0.0:{}", addr.port()))
+            .unwrap_or_else(|| "0.0.0.0:0".to_string());
+
+        let socket = UdpSocket::bind(&bind_addr).await?;
+        debug!(addr = %socket.local_addr()?, "SOME/IP UDP socket bound");
+
+        let socket = Arc::new(socket);
+        self.udp_socket = Some(socket.clone());
+
+        // Start background receive loop
+        let pending = self.pending_requests.clone();
+        let handlers = self.request_handlers.clone();
+        let recv_socket = socket.clone();
+
+        let handle = tokio::spawn(async move {
+            let mut buf = vec![0u8; 65535];
+            loop {
+                let (len, src) = match recv_socket.recv_from(&mut buf).await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        error!(error = %e, "UDP recv_from failed");
+                        continue;
+                    }
+                };
+
+                if len < HEADER_LEN {
+                    warn!(len, "received datagram shorter than SOME/IP header");
+                    continue;
+                }
+
+                let (hdr, _client_id, payload_len, _iface_ver) =
+                    match decode_header(&buf[..len]) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            warn!(error = %e, "failed to decode SOME/IP header");
+                            continue;
+                        }
+                    };
+
+                let payload_end = HEADER_LEN + payload_len as usize;
+                if payload_end > len {
+                    warn!(
+                        expected = payload_end,
+                        actual = len,
+                        "truncated SOME/IP payload"
+                    );
+                    continue;
+                }
+
+                let payload = Bytes::copy_from_slice(&buf[HEADER_LEN..payload_end]);
+
+                match hdr.message_type {
+                    // --- Response / Error → correlate with pending request ---
+                    MessageType::Response | MessageType::Error => {
+                        if let Some((_, sender)) = pending.remove(&hdr.session_id) {
+                            let _ = sender.send((hdr, payload));
+                        } else {
+                            warn!(
+                                session_id = hdr.session_id,
+                                "received response with no pending request"
+                            );
+                        }
+                    }
+
+                    // --- Request → dispatch to registered handler ---
+                    MessageType::Request => {
+                        // instance_id is not in the SOME/IP base header (always
+                        // decoded as 0), so we look up by service_id with any
+                        // registered instance_id.
+                        let handler_ref = handlers
+                            .iter()
+                            .find(|entry| entry.key().0 == hdr.service_id);
+
+                        if let Some(handler) = handler_ref {
+                            let handler_fn = handler.value();
+                            let resp_fut = handler_fn(hdr.clone(), payload);
+                            let reply_socket = recv_socket.clone();
+                            let reply_hdr = hdr;
+                            let reply_src = src;
+
+                            tokio::spawn(async move {
+                                match resp_fut.await {
+                                    Ok(resp_payload) => {
+                                        let resp_header = MessageHeader {
+                                            service_id: reply_hdr.service_id,
+                                            method_id: reply_hdr.method_id,
+                                            instance_id: reply_hdr.instance_id,
+                                            session_id: reply_hdr.session_id,
+                                            message_type: MessageType::Response,
+                                            return_code: ReturnCode::Ok,
+                                        };
+                                        let wire_hdr = encode_header(
+                                            &resp_header,
+                                            0, // server doesn't need client_id
+                                            resp_payload.len() as u32,
+                                            DEFAULT_INTERFACE_VERSION,
+                                        );
+                                        let mut frame =
+                                            Vec::with_capacity(HEADER_LEN + resp_payload.len());
+                                        frame.extend_from_slice(&wire_hdr);
+                                        frame.extend_from_slice(&resp_payload);
+                                        if let Err(e) =
+                                            reply_socket.send_to(&frame, reply_src).await
+                                        {
+                                            error!(error = %e, "failed to send response");
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error!(error = %e, "request handler failed");
+                                        // Send Error response
+                                        let err_header = MessageHeader {
+                                            service_id: reply_hdr.service_id,
+                                            method_id: reply_hdr.method_id,
+                                            instance_id: reply_hdr.instance_id,
+                                            session_id: reply_hdr.session_id,
+                                            message_type: MessageType::Error,
+                                            return_code: ReturnCode::NotOk,
+                                        };
+                                        let wire_hdr = encode_header(
+                                            &err_header,
+                                            0,
+                                            0,
+                                            DEFAULT_INTERFACE_VERSION,
+                                        );
+                                        let _ =
+                                            reply_socket.send_to(&wire_hdr, reply_src).await;
+                                    }
+                                }
+                            });
+                        } else {
+                            warn!(
+                                service_id = %hdr.service_id,
+                                method_id = %hdr.method_id,
+                                "no handler registered for incoming request"
+                            );
+                        }
+                    }
+
+                    // --- Fire-and-forget / Notification — no response expected ---
+                    MessageType::RequestNoReturn | MessageType::Notification => {
+                        let handler_ref = handlers
+                            .iter()
+                            .find(|entry| entry.key().0 == hdr.service_id);
+                        if let Some(handler) = handler_ref {
+                            let handler_fn = handler.value();
+                            let fut = handler_fn(hdr, payload);
+                            tokio::spawn(async move {
+                                if let Err(e) = fut.await {
+                                    warn!(error = %e, "fire-and-forget handler error");
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        self.recv_handle = Some(handle);
+        Ok(())
+    }
+
+    /// Get the local address the UDP socket is bound to.
+    pub fn local_addr(&self) -> Option<std::net::SocketAddr> {
+        self.udp_socket
+            .as_ref()
+            .and_then(|s| s.local_addr().ok())
+    }
+
+    /// Allocate the next session ID.
+    fn next_session_id(&self) -> u16 {
+        let id = self.session_counter.fetch_add(1, Ordering::Relaxed);
+        if id == 0 {
+            // Session ID 0 is reserved in SOME/IP; skip it
+            self.session_counter.fetch_add(1, Ordering::Relaxed)
+        } else {
+            id
+        }
+    }
+
+    /// Get the UDP socket, or return an error if not yet bound.
+    fn socket(&self) -> Result<&Arc<UdpSocket>, AraComError> {
+        self.udp_socket.as_ref().ok_or(AraComError::Transport {
+            message: "transport not bound — call bind() first".to_string(),
+        })
+    }
+
+    /// Look up the remote endpoint for a service in static discovery mode.
+    fn resolve_endpoint(
+        &self,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+    ) -> Option<SocketAddrV4> {
+        self.config
+            .remote_services
+            .iter()
+            .find(|rs| rs.service_id == service_id && rs.instance_id == instance_id)
+            .and_then(|rs| rs.endpoint.udp)
+    }
+
+    /// Construct and send a SOME/IP datagram.
+    async fn send_datagram(
+        &self,
+        header: &MessageHeader,
+        payload: &[u8],
+        dest: SocketAddrV4,
+    ) -> Result<(), AraComError> {
+        let wire_hdr = encode_header(
+            header,
+            self.client_id,
+            payload.len() as u32,
+            DEFAULT_INTERFACE_VERSION,
+        );
+        let mut frame = Vec::with_capacity(HEADER_LEN + payload.len());
+        frame.extend_from_slice(&wire_hdr);
+        frame.extend_from_slice(payload);
+
+        let socket = self.socket()?;
+        socket
+            .send_to(&frame, dest)
+            .await
+            .map_err(|e| AraComError::Transport {
+                message: format!("UDP send failed: {e}"),
+            })?;
+        Ok(())
     }
 }
 
 #[async_trait]
 impl Transport for SomeIpTransport {
-    /// Serialize `payload`, prepend the SOME/IP header derived from `header`,
-    /// send over UDP (or TCP if payload exceeds `udp_threshold`), and await
-    /// the correlated `Response` or `Error` message.
     async fn send_request(
         &self,
-        _header: MessageHeader,
-        _payload: Bytes,
+        mut header: MessageHeader,
+        payload: Bytes,
     ) -> Result<(MessageHeader, Bytes), AraComError> {
-        // TODO (Week 5–6): allocate session_id, insert into pending_requests,
-        // encode header + payload, pick UDP vs TCP, send, await oneshot channel.
-        todo!("send_request: SOME/IP request/response correlation not yet implemented")
+        let dest = self
+            .resolve_endpoint(header.service_id, header.instance_id)
+            .ok_or_else(|| AraComError::ServiceNotAvailable {
+                service_id: header.service_id,
+                instance_id: header.instance_id,
+            })?;
+
+        let session_id = self.next_session_id();
+        header.session_id = session_id;
+        header.message_type = MessageType::Request;
+
+        // Set up the response correlation channel
+        let (tx, rx) = oneshot::channel();
+        self.pending_requests.insert(session_id, tx);
+
+        // Send the request
+        if let Err(e) = self.send_datagram(&header, &payload, dest).await {
+            self.pending_requests.remove(&session_id);
+            return Err(e);
+        }
+
+        // Await the correlated response with a timeout
+        let timeout = tokio::time::Duration::from_millis(5000);
+        match tokio::time::timeout(timeout, rx).await {
+            Ok(Ok((resp_header, resp_payload))) => Ok((resp_header, resp_payload)),
+            Ok(Err(_)) => {
+                // Channel closed without response
+                Err(AraComError::Timeout {
+                    timeout_ms: timeout.as_millis() as u64,
+                })
+            }
+            Err(_) => {
+                self.pending_requests.remove(&session_id);
+                Err(AraComError::Timeout {
+                    timeout_ms: timeout.as_millis() as u64,
+                })
+            }
+        }
     }
 
-    /// Serialize `payload`, prepend a RequestNoReturn SOME/IP header, and
-    /// send fire-and-forget over UDP. No response is awaited.
     async fn send_fire_and_forget(
         &self,
-        _header: MessageHeader,
-        _payload: Bytes,
+        mut header: MessageHeader,
+        payload: Bytes,
     ) -> Result<(), AraComError> {
-        // TODO (Week 5): encode MessageType::RequestNoReturn header, send UDP datagram.
-        todo!("send_fire_and_forget: fire-and-forget send not yet implemented")
+        let dest = self
+            .resolve_endpoint(header.service_id, header.instance_id)
+            .ok_or_else(|| AraComError::ServiceNotAvailable {
+                service_id: header.service_id,
+                instance_id: header.instance_id,
+            })?;
+
+        header.session_id = self.next_session_id();
+        header.message_type = MessageType::RequestNoReturn;
+
+        self.send_datagram(&header, &payload, dest).await
     }
 
-    /// Serialize `payload`, prepend a Notification SOME/IP header, and
-    /// multicast/unicast to all active event group subscribers.
     async fn send_notification(
         &self,
         _header: MessageHeader,
         _payload: Bytes,
     ) -> Result<(), AraComError> {
-        // TODO (Week 6–7): look up subscriber list for the event group, send
-        // multicast or per-subscriber unicast datagrams.
+        // TODO (Week 7): look up subscriber list, send to each
         todo!("send_notification: event notification delivery not yet implemented")
     }
 
-    /// Emit a SOME/IP-SD `OfferService` entry on the multicast SD socket and
-    /// start the SD offer state machine (initial delay, repetition, main phase).
     async fn offer_service(
         &self,
-        _service_id: ServiceId,
-        _instance_id: InstanceId,
-        _major_version: MajorVersion,
-        _minor_version: MinorVersion,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        major_version: MajorVersion,
+        minor_version: MinorVersion,
     ) -> Result<(), AraComError> {
-        // TODO (Week 7): build SD OfferService entry, schedule initial delay,
-        // send on SD multicast socket, register in offered_services map.
-        todo!("offer_service: SOME/IP-SD OfferService not yet implemented")
+        match self.config.discovery_mode {
+            DiscoveryMode::Static => {
+                // In static mode, just register locally — no SD announcement needed
+                self.offered_services
+                    .insert((service_id, instance_id), (major_version, minor_version));
+                debug!(
+                    %service_id, %instance_id,
+                    "service offered (static mode)"
+                );
+                Ok(())
+            }
+            DiscoveryMode::SomeIpSd => {
+                // TODO (Week 7): SD OfferService state machine
+                todo!("offer_service: SOME/IP-SD OfferService not yet implemented")
+            }
+        }
     }
 
-    /// Emit a SOME/IP-SD `StopOfferService` entry and remove from the offered
-    /// services table.
     async fn stop_offer_service(
         &self,
-        _service_id: ServiceId,
-        _instance_id: InstanceId,
+        service_id: ServiceId,
+        instance_id: InstanceId,
     ) -> Result<(), AraComError> {
-        // TODO (Week 7): send StopOfferService SD entry, remove from offered_services.
-        todo!("stop_offer_service: SOME/IP-SD StopOfferService not yet implemented")
+        match self.config.discovery_mode {
+            DiscoveryMode::Static => {
+                self.offered_services.remove(&(service_id, instance_id));
+                debug!(
+                    %service_id, %instance_id,
+                    "service stopped (static mode)"
+                );
+                Ok(())
+            }
+            DiscoveryMode::SomeIpSd => {
+                todo!("stop_offer_service: SOME/IP-SD StopOfferService not yet implemented")
+            }
+        }
     }
 
-    /// Send a SOME/IP-SD `FindService` entry on the multicast SD socket and
-    /// wait until a matching `OfferService` is received (with timeout).
     async fn find_service(
         &self,
-        _service_id: ServiceId,
-        _instance_id: InstanceId,
-        _major_version: MajorVersion,
-        _minor_version: MinorVersion,
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        major_version: MajorVersion,
+        minor_version: MinorVersion,
     ) -> Result<ServiceInstanceId, AraComError> {
-        // TODO (Week 7): send FindService SD entry, register a oneshot channel
-        // in the pending_finds table, await SD task notification.
-        todo!("find_service: SOME/IP-SD FindService not yet implemented")
+        match self.config.discovery_mode {
+            DiscoveryMode::Static => {
+                // In static mode, check if endpoint is configured
+                if self.resolve_endpoint(service_id, instance_id).is_some() {
+                    Ok(ServiceInstanceId {
+                        service_id,
+                        instance_id,
+                        major_version,
+                        minor_version,
+                    })
+                } else {
+                    Err(AraComError::ServiceNotAvailable {
+                        service_id,
+                        instance_id,
+                    })
+                }
+            }
+            DiscoveryMode::SomeIpSd => {
+                todo!("find_service: SOME/IP-SD FindService not yet implemented")
+            }
+        }
     }
 
-    /// Register a handler that will be called when an incoming request arrives
-    /// for the given service/instance. The skeleton side uses this to dispatch
-    /// to user application logic.
     async fn register_request_handler(
         &self,
-        _service_id: ServiceId,
-        _instance_id: InstanceId,
-        _handler: Box<
+        service_id: ServiceId,
+        instance_id: InstanceId,
+        handler: Box<
             dyn Fn(MessageHeader, Bytes) -> BoxFuture<'static, Result<Bytes, AraComError>>
                 + Send
                 + Sync,
         >,
     ) -> Result<(), AraComError> {
-        // TODO (Week 6): store handler in a handler registry keyed by
-        // (service_id, instance_id); the receive loop will dispatch into it.
-        todo!("register_request_handler: request handler registry not yet implemented")
+        self.request_handlers
+            .insert((service_id, instance_id), handler);
+        debug!(%service_id, %instance_id, "request handler registered");
+        Ok(())
     }
 
-    /// Send a SOME/IP-SD `SubscribeEventgroup` entry and wait for the
-    /// corresponding `SubscribeEventgroupAck`.
     async fn subscribe_event_group(
         &self,
         _service_id: ServiceId,
         _instance_id: InstanceId,
         _event_group_id: EventGroupId,
     ) -> Result<(), AraComError> {
-        // TODO (Week 7): send SubscribeEventgroup SD entry, await Ack on
-        // pending_subscriptions channel.
+        // TODO (Week 7): SD SubscribeEventgroup
         todo!("subscribe_event_group: SOME/IP-SD SubscribeEventgroup not yet implemented")
     }
 
-    /// Send a SOME/IP-SD `StopSubscribeEventgroup` entry.
     async fn unsubscribe_event_group(
         &self,
         _service_id: ServiceId,
         _instance_id: InstanceId,
         _event_group_id: EventGroupId,
     ) -> Result<(), AraComError> {
-        // TODO (Week 7): send StopSubscribeEventgroup SD entry, remove from
-        // active subscriptions.
+        // TODO (Week 7): SD StopSubscribeEventgroup
         todo!("unsubscribe_event_group: SOME/IP-SD StopSubscribeEventgroup not yet implemented")
+    }
+}
+
+impl Drop for SomeIpTransport {
+    fn drop(&mut self) {
+        if let Some(handle) = self.recv_handle.take() {
+            handle.abort();
+        }
     }
 }

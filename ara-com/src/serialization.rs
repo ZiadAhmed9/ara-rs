@@ -140,20 +140,37 @@ impl AraDeserialize for bool {
 }
 
 // ---------------------------------------------------------------------------
-// String — 4-byte big-endian length prefix followed by UTF-8 payload
+// String — SOME/IP wire format:
+//   4-byte big-endian total byte length (including BOM + NUL) +
+//   UTF-8 BOM (0xEF 0xBB 0xBF) + UTF-8 bytes + NUL (0x00)
+//
+// Special case: empty string serializes as 4 zero bytes only (vsomeip compat).
 // ---------------------------------------------------------------------------
+
+const UTF8_BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
 
 impl AraSerialize for String {
     fn ara_serialize(&self, buf: &mut Vec<u8>) -> Result<(), AraComError> {
+        if self.is_empty() {
+            buf.extend_from_slice(&0u32.to_be_bytes());
+            return Ok(());
+        }
         let bytes = self.as_bytes();
-        let len = bytes.len() as u32;
-        buf.extend_from_slice(&len.to_be_bytes());
+        // total length = 3 (BOM) + string bytes + 1 (NUL)
+        let total_len = (3 + bytes.len() + 1) as u32;
+        buf.extend_from_slice(&total_len.to_be_bytes());
+        buf.extend_from_slice(&UTF8_BOM);
         buf.extend_from_slice(bytes);
+        buf.push(0x00);
         Ok(())
     }
 
     fn serialized_size(&self) -> usize {
-        4 + self.len()
+        if self.is_empty() {
+            4
+        } else {
+            4 + 3 + self.len() + 1
+        }
     }
 }
 
@@ -165,6 +182,9 @@ impl AraDeserialize for String {
             });
         }
         let len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
+        if len == 0 {
+            return Ok(String::new());
+        }
         if buf.len() < 4 + len {
             return Err(AraComError::Deserialization {
                 message: format!(
@@ -174,25 +194,42 @@ impl AraDeserialize for String {
                 ),
             });
         }
-        let s =
-            std::str::from_utf8(&buf[4..4 + len]).map_err(|e| AraComError::Deserialization {
-                message: format!("String is not valid UTF-8: {e}"),
-            })?;
+        let payload = &buf[4..4 + len];
+        // Skip UTF-8 BOM if present
+        let content = if payload.starts_with(&UTF8_BOM) {
+            &payload[3..]
+        } else {
+            payload
+        };
+        // Strip trailing NUL if present
+        let content = if content.last() == Some(&0x00) {
+            &content[..content.len() - 1]
+        } else {
+            content
+        };
+        let s = std::str::from_utf8(content).map_err(|e| AraComError::Deserialization {
+            message: format!("String is not valid UTF-8: {e}"),
+        })?;
         Ok(s.to_owned())
     }
 }
 
 // ---------------------------------------------------------------------------
-// Vec<T> — 4-byte big-endian element-count prefix followed by elements
+// Vec<T> — SOME/IP wire format:
+//   4-byte big-endian **byte length** of all serialized elements, then elements.
+//   (NOT element count — SOME/IP uses byte length prefix per PRS_SOMEIP_00462)
 // ---------------------------------------------------------------------------
 
 impl<T: AraSerialize> AraSerialize for Vec<T> {
     fn ara_serialize(&self, buf: &mut Vec<u8>) -> Result<(), AraComError> {
-        let count = self.len() as u32;
-        buf.extend_from_slice(&count.to_be_bytes());
+        let capacity: usize = self.iter().map(|item| item.serialized_size()).sum();
+        let mut elements_buf: Vec<u8> = Vec::with_capacity(capacity);
         for item in self {
-            item.ara_serialize(buf)?;
+            item.ara_serialize(&mut elements_buf)?;
         }
+        let byte_len = elements_buf.len() as u32;
+        buf.extend_from_slice(&byte_len.to_be_bytes());
+        buf.extend_from_slice(&elements_buf);
         Ok(())
     }
 
@@ -208,15 +245,34 @@ impl<T: AraDeserialize + AraSerialize> AraDeserialize for Vec<T> {
     fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
         if buf.len() < 4 {
             return Err(AraComError::Deserialization {
-                message: format!("need 4-byte count prefix for Vec, got {}", buf.len()),
+                message: format!("need 4-byte byte-length prefix for Vec, got {}", buf.len()),
             });
         }
-        let count = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
-        let mut offset = 4;
-        let mut result = Vec::with_capacity(count);
-        for _ in 0..count {
-            let item = T::ara_deserialize(&buf[offset..])?;
+        let byte_len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
+        if buf.len() < 4 + byte_len {
+            return Err(AraComError::Deserialization {
+                message: format!(
+                    "Vec payload truncated: need {} bytes, got {}",
+                    byte_len,
+                    buf.len() - 4
+                ),
+            });
+        }
+        let payload = &buf[4..4 + byte_len];
+        let mut offset = 0;
+        let mut result = Vec::new();
+        while offset < payload.len() {
+            let item = T::ara_deserialize(&payload[offset..])?;
             offset += item.serialized_size();
+            if offset > payload.len() {
+                return Err(AraComError::Deserialization {
+                    message: format!(
+                        "Vec element overran payload: offset {} exceeds {} bytes",
+                        offset,
+                        payload.len()
+                    ),
+                });
+            }
             result.push(item);
         }
         Ok(result)
@@ -329,8 +385,21 @@ mod tests {
         let original = String::new();
         let mut buf = Vec::new();
         original.ara_serialize(&mut buf).unwrap();
+        // Empty string: just 4 zero bytes (vsomeip compat — no BOM/NUL)
         assert_eq!(buf, [0x00, 0x00, 0x00, 0x00]);
         assert_eq!(String::ara_deserialize(&buf).unwrap(), "");
+    }
+
+    #[test]
+    fn test_string_bom_nul() {
+        // "AB" => length=6 (3 BOM + 2 chars + 1 NUL), then BOM, "A", "B", NUL
+        let s = "AB".to_string();
+        let mut buf = Vec::new();
+        s.ara_serialize(&mut buf).unwrap();
+        assert_eq!(
+            buf,
+            [0x00, 0x00, 0x00, 0x06, 0xEF, 0xBB, 0xBF, 0x41, 0x42, 0x00]
+        );
     }
 
     // --- Vec<T> ---
@@ -341,6 +410,7 @@ mod tests {
         let mut buf = Vec::new();
         original.ara_serialize(&mut buf).unwrap();
         assert_eq!(buf.len(), original.serialized_size());
+        assert_eq!(&buf[..4], &[0x00, 0x00, 0x00, 0x10]);
         let decoded: Vec<u32> = Vec::ara_deserialize(&buf).unwrap();
         assert_eq!(decoded, original);
     }
@@ -353,5 +423,14 @@ mod tests {
         assert_eq!(buf, [0x00, 0x00, 0x00, 0x00]);
         let decoded: Vec<u8> = Vec::ara_deserialize(&buf).unwrap();
         assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn test_vec_u16_byte_length() {
+        // 2 x u16 = 4 bytes of payload, so prefix should be 0x00000004, NOT element count 0x00000002
+        let v: Vec<u16> = vec![1u16, 2u16];
+        let mut buf = Vec::new();
+        v.ara_serialize(&mut buf).unwrap();
+        assert_eq!(&buf[..4], &[0x00, 0x00, 0x00, 0x04]);
     }
 }
