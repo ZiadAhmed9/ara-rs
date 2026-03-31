@@ -1,5 +1,5 @@
-use ara_com::transport::{AraSerialize, AraDeserialize};
 use ara_com::error::AraComError;
+use ara_com::transport::{AraDeserialize, AraSerialize};
 #[derive(Debug, Clone, PartialEq)]
 pub struct BatteryStatus {
     pub voltage: f64,
@@ -14,7 +14,8 @@ impl AraSerialize for BatteryStatus {
         Ok(())
     }
     fn serialized_size(&self) -> usize {
-        self.voltage.serialized_size() + self.current.serialized_size()
+        self.voltage.serialized_size()
+            + self.current.serialized_size()
             + self.charging.serialized_size()
     }
 }
@@ -27,6 +28,10 @@ impl AraDeserialize for BatteryStatus {
         offset += current.serialized_size();
         let charging = <bool as AraDeserialize>::ara_deserialize(&buf[offset..])?;
         offset += charging.serialized_size();
-        Ok(Self { voltage, current, charging })
+        Ok(Self {
+            voltage,
+            current,
+            charging,
+        })
     }
 }

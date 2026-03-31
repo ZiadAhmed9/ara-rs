@@ -18,8 +18,7 @@ use tracing::{debug, error, info, warn};
 use ara_com::error::AraComError;
 use ara_com::transport::{MessageHeader, MessageType, ReturnCode, Transport};
 use ara_com::types::{
-    EventGroupId, InstanceId, MajorVersion, MinorVersion, ServiceId,
-    ServiceInstanceId,
+    EventGroupId, InstanceId, MajorVersion, MinorVersion, ServiceId, ServiceInstanceId,
 };
 
 use crate::config::{DiscoveryMode, SomeIpConfig};
@@ -32,9 +31,7 @@ use header::{decode_header, encode_header, DEFAULT_INTERFACE_VERSION, HEADER_LEN
 // ---------------------------------------------------------------------------
 
 type RequestHandler = Box<
-    dyn Fn(MessageHeader, Bytes) -> BoxFuture<'static, Result<Bytes, AraComError>>
-        + Send
-        + Sync,
+    dyn Fn(MessageHeader, Bytes) -> BoxFuture<'static, Result<Bytes, AraComError>> + Send + Sync,
 >;
 
 type PendingResponse = oneshot::Sender<(MessageHeader, Bytes)>;
@@ -125,14 +122,13 @@ impl SomeIpTransport {
                     continue;
                 }
 
-                let (hdr, _client_id, payload_len, _iface_ver) =
-                    match decode_header(&buf[..len]) {
-                        Ok(r) => r,
-                        Err(e) => {
-                            warn!(error = %e, "failed to decode SOME/IP header");
-                            continue;
-                        }
-                    };
+                let (hdr, _client_id, payload_len, _iface_ver) = match decode_header(&buf[..len]) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        warn!(error = %e, "failed to decode SOME/IP header");
+                        continue;
+                    }
+                };
 
                 let payload_end = HEADER_LEN + payload_len as usize;
                 if payload_end > len {
@@ -219,8 +215,7 @@ impl SomeIpTransport {
                                             0,
                                             DEFAULT_INTERFACE_VERSION,
                                         );
-                                        let _ =
-                                            reply_socket.send_to(&wire_hdr, reply_src).await;
+                                        let _ = reply_socket.send_to(&wire_hdr, reply_src).await;
                                     }
                                 }
                             });
@@ -258,9 +253,7 @@ impl SomeIpTransport {
 
     /// Get the local address the UDP socket is bound to.
     pub fn local_addr(&self) -> Option<std::net::SocketAddr> {
-        self.udp_socket
-            .as_ref()
-            .and_then(|s| s.local_addr().ok())
+        self.udp_socket.as_ref().and_then(|s| s.local_addr().ok())
     }
 
     /// Allocate the next session ID.
@@ -318,7 +311,10 @@ impl SomeIpTransport {
         event_group_id: EventGroupId,
         endpoint: &SocketAddrV4,
     ) {
-        if let Some(mut subs) = self.event_subscribers.get_mut(&(service_id, event_group_id)) {
+        if let Some(mut subs) = self
+            .event_subscribers
+            .get_mut(&(service_id, event_group_id))
+        {
             subs.retain(|e| e != endpoint);
         }
         debug!(%service_id, %event_group_id, %endpoint, "event subscriber removed");
@@ -592,8 +588,7 @@ impl Transport for SomeIpTransport {
         match self.config.discovery_mode {
             DiscoveryMode::Static => {
                 // Remove any subscriber entry keyed on this service + event group.
-                self.event_subscribers
-                    .remove(&(service_id, event_group_id));
+                self.event_subscribers.remove(&(service_id, event_group_id));
                 debug!(
                     %service_id, %instance_id, %event_group_id,
                     "unsubscribed from event group (static mode)"

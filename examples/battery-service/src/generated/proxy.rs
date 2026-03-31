@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use ara_com::proxy::ProxyBase;
-use ara_com::transport::{AraSerialize, AraDeserialize, Transport};
-use ara_com::types::{InstanceId, MethodId, ServiceId, EventGroupId};
 use ara_com::error::AraComError;
+use ara_com::proxy::ProxyBase;
+use ara_com::transport::{AraDeserialize, AraSerialize, Transport};
+use ara_com::types::{EventGroupId, InstanceId, MethodId, ServiceId};
+use std::sync::Arc;
 pub struct GetVoltageRequest {
     pub battery_id: u8,
 }

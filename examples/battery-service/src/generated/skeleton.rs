@@ -1,10 +1,8 @@
-use std::sync::Arc;
-use ara_com::skeleton::SkeletonBase;
-use ara_com::transport::{
-    Transport, AraSerialize, MessageHeader, MessageType, ReturnCode,
-};
-use ara_com::types::{InstanceId, MethodId, ServiceId, MajorVersion, MinorVersion};
 use ara_com::error::AraComError;
+use ara_com::skeleton::SkeletonBase;
+use ara_com::transport::{AraSerialize, MessageHeader, MessageType, ReturnCode, Transport};
+use ara_com::types::{InstanceId, MajorVersion, MethodId, MinorVersion, ServiceId};
+use std::sync::Arc;
 pub struct BatteryServiceSkeleton<T: Transport> {
     pub base: SkeletonBase<T>,
 }
@@ -37,6 +35,9 @@ impl<T: Transport> BatteryServiceSkeleton<T> {
             message_type: MessageType::Notification,
             return_code: ReturnCode::Ok,
         };
-        self.base.transport().send_notification(header, bytes::Bytes::from(buf)).await
+        self.base
+            .transport()
+            .send_notification(header, bytes::Bytes::from(buf))
+            .await
     }
 }

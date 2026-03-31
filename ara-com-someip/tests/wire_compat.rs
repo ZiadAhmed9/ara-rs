@@ -5,9 +5,7 @@
 //! This ensures our header parsing, serialization, and framing are
 //! wire-compatible.
 
-use ara_com::transport::{
-    AraDeserialize, AraSerialize, MessageHeader, MessageType, ReturnCode,
-};
+use ara_com::transport::{AraDeserialize, AraSerialize, MessageHeader, MessageType, ReturnCode};
 use ara_com::types::{MethodId, ServiceId};
 
 use ara_com_someip::transport::header::{decode_header, encode_header, HEADER_LEN};
@@ -147,7 +145,10 @@ fn decode_vsomeip_response_header_and_payload() {
 
     // Decode the f64 payload
     let voltage = f64::ara_deserialize(&VSOMEIP_RESPONSE_FRAME[HEADER_LEN..]).unwrap();
-    assert!((voltage - 12.6).abs() < 1e-10, "expected 12.6, got {voltage}");
+    assert!(
+        (voltage - 12.6).abs() < 1e-10,
+        "expected 12.6, got {voltage}"
+    );
 }
 
 #[test]
@@ -177,13 +178,15 @@ fn decode_vsomeip_notification() {
     assert_eq!(payload_len, 8);
 
     let voltage = f64::ara_deserialize(&VSOMEIP_NOTIFICATION_FRAME[HEADER_LEN..]).unwrap();
-    assert!((voltage - 13.1).abs() < 1e-10, "expected 13.1, got {voltage}");
+    assert!(
+        (voltage - 13.1).abs() < 1e-10,
+        "expected 13.1, got {voltage}"
+    );
 }
 
 #[test]
 fn decode_vsomeip_error_frame() {
-    let (hdr, _, payload_len, _) =
-        decode_header(&VSOMEIP_ERROR_FRAME).expect("decode failed");
+    let (hdr, _, payload_len, _) = decode_header(&VSOMEIP_ERROR_FRAME).expect("decode failed");
 
     assert_eq!(hdr.service_id, ServiceId(0x1234));
     assert_eq!(hdr.method_id, MethodId(0x0001));
@@ -263,8 +266,7 @@ fn encode_matches_vsomeip_error() {
     };
     let encoded = encode_header(&hdr, 0x0002, 0, 1);
     assert_eq!(
-        encoded,
-        VSOMEIP_ERROR_FRAME,
+        encoded, VSOMEIP_ERROR_FRAME,
         "our encoder doesn't match vsomeip wire format for Error"
     );
 }

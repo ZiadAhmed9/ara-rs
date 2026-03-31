@@ -86,13 +86,15 @@ async fn test_fire_and_forget() {
         .register_request_handler(
             SERVICE_ID,
             INSTANCE_ID,
-            Box::new(move |_hdr, _payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
-                let notify = received_clone.clone();
-                Box::pin(async move {
-                    notify.notify_one();
-                    Ok(Bytes::new())
-                })
-            }),
+            Box::new(
+                move |_hdr, _payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
+                    let notify = received_clone.clone();
+                    Box::pin(async move {
+                        notify.notify_one();
+                        Ok(Bytes::new())
+                    })
+                },
+            ),
         )
         .await
         .unwrap();
@@ -136,20 +138,22 @@ async fn test_request_response_round_trip() {
         .register_request_handler(
             SERVICE_ID,
             INSTANCE_ID,
-            Box::new(|_hdr, payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
-                Box::pin(async move {
-                    let value = u32::ara_deserialize(&payload).map_err(|e| {
-                        AraComError::Application {
-                            code: 1,
-                            message: e.to_string(),
-                        }
-                    })?;
-                    let result = value * 2;
-                    let mut buf = Vec::new();
-                    result.ara_serialize(&mut buf)?;
-                    Ok(Bytes::from(buf))
-                })
-            }),
+            Box::new(
+                |_hdr, payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
+                    Box::pin(async move {
+                        let value = u32::ara_deserialize(&payload).map_err(|e| {
+                            AraComError::Application {
+                                code: 1,
+                                message: e.to_string(),
+                            }
+                        })?;
+                        let result = value * 2;
+                        let mut buf = Vec::new();
+                        result.ara_serialize(&mut buf)?;
+                        Ok(Bytes::from(buf))
+                    })
+                },
+            ),
         )
         .await
         .unwrap();
@@ -193,12 +197,7 @@ async fn test_static_find_service() {
 
     // Should find the statically configured service
     let found = proxy
-        .find_service(
-            SERVICE_ID,
-            INSTANCE_ID,
-            MajorVersion(1),
-            MinorVersion(0),
-        )
+        .find_service(SERVICE_ID, INSTANCE_ID, MajorVersion(1), MinorVersion(0))
         .await
         .expect("find_service failed");
 
@@ -255,9 +254,7 @@ async fn test_notification_delivery() {
     // validate the endpoint exists in static mode.
     let mut proxy = SomeIpTransport::new(proxy_config(skeleton_port));
     proxy.bind().await.expect("proxy bind failed");
-    let proxy_addr = proxy
-        .local_addr()
-        .expect("proxy has no local addr");
+    let proxy_addr = proxy.local_addr().expect("proxy has no local addr");
 
     // Proxy registers a handler so it can receive incoming Notification messages.
     let received_payload = Arc::new(tokio::sync::Mutex::new(None::<Bytes>));
@@ -269,15 +266,17 @@ async fn test_notification_delivery() {
         .register_request_handler(
             SERVICE_ID,
             INSTANCE_ID,
-            Box::new(move |_hdr, payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
-                let store = received_payload_clone.clone();
-                let signal = notify_signal_clone.clone();
-                Box::pin(async move {
-                    *store.lock().await = Some(payload);
-                    signal.notify_one();
-                    Ok(Bytes::new())
-                })
-            }),
+            Box::new(
+                move |_hdr, payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
+                    let store = received_payload_clone.clone();
+                    let signal = notify_signal_clone.clone();
+                    Box::pin(async move {
+                        *store.lock().await = Some(payload);
+                        signal.notify_one();
+                        Ok(Bytes::new())
+                    })
+                },
+            ),
         )
         .await
         .unwrap();

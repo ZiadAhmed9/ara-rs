@@ -6,7 +6,10 @@ use crate::parser::ir::{ArxmlProject, ServiceInterface};
 
 use super::snake_case;
 
-pub fn generate_skeleton(svc: &ServiceInterface, _project: &ArxmlProject) -> Result<String, CargoArxmlError> {
+pub fn generate_skeleton(
+    svc: &ServiceInterface,
+    _project: &ArxmlProject,
+) -> Result<String, CargoArxmlError> {
     let struct_name_str = format!("{}Skeleton", svc.short_name);
     let struct_name = Ident::new(&struct_name_str, Span::call_site());
 
@@ -22,7 +25,11 @@ pub fn generate_skeleton(svc: &ServiceInterface, _project: &ArxmlProject) -> Res
     let major_lit = Literal::u8_unsuffixed(svc.major_version);
     let minor_lit = Literal::u32_unsuffixed(svc.minor_version);
 
-    let event_impls: Vec<TokenStream> = svc.events.iter().map(|e| generate_event_notify(e, svc)).collect();
+    let event_impls: Vec<TokenStream> = svc
+        .events
+        .iter()
+        .map(|e| generate_event_notify(e, svc))
+        .collect();
 
     let tokens = quote! {
         use std::sync::Arc;

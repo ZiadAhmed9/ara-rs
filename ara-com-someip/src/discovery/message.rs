@@ -167,9 +167,7 @@ impl SdOption {
                 if length != 10 {
                     return Err(SomeIpError::Deserialization {
                         offset,
-                        message: format!(
-                            "IPv4 endpoint option: expected length 10, got {length}"
-                        ),
+                        message: format!("IPv4 endpoint option: expected length 10, got {length}"),
                     });
                 }
                 // offset+2 = type, offset+3 = reserved, offset+4..8 = addr (4 bytes),
@@ -182,7 +180,14 @@ impl SdOption {
                 );
                 let protocol = TransportProtocol::from_wire(buf[offset + 9])?;
                 let port = u16::from_be_bytes([buf[offset + 10], buf[offset + 11]]);
-                Ok((SdOption::Ipv4Endpoint { addr, port, protocol }, total))
+                Ok((
+                    SdOption::Ipv4Endpoint {
+                        addr,
+                        port,
+                        protocol,
+                    },
+                    total,
+                ))
             }
             other => Err(SomeIpError::Deserialization {
                 offset,
@@ -821,7 +826,10 @@ mod tests {
 
         assert!(matches!(decoded.entries[0], SdEntry::FindService { .. }));
         assert!(matches!(decoded.entries[1], SdEntry::OfferService { .. }));
-        assert!(matches!(decoded.entries[2], SdEntry::SubscribeEventgroup { .. }));
+        assert!(matches!(
+            decoded.entries[2],
+            SdEntry::SubscribeEventgroup { .. }
+        ));
         assert!(matches!(
             decoded.entries[3],
             SdEntry::StopSubscribeEventgroup { .. }

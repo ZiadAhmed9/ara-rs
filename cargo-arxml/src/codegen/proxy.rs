@@ -11,7 +11,10 @@ use super::types::resolve_type_name;
 ///
 /// The proxy is the client-side handle used to call methods and subscribe to
 /// events on a remote service.
-pub fn generate_proxy(svc: &ServiceInterface, project: &ArxmlProject) -> Result<String, CargoArxmlError> {
+pub fn generate_proxy(
+    svc: &ServiceInterface,
+    project: &ArxmlProject,
+) -> Result<String, CargoArxmlError> {
     let struct_name_str = format!("{}Proxy", svc.short_name);
     let struct_name = Ident::new(&struct_name_str, Span::call_site());
 

@@ -21,9 +21,7 @@ use tracing::info;
 use ara_com::transport::Transport;
 use ara_com::types::{InstanceId, MajorVersion, MinorVersion};
 
-use ara_com_someip::config::{
-    EndpointConfig, RemoteServiceConfig, SdConfig, SomeIpConfig,
-};
+use ara_com_someip::config::{EndpointConfig, RemoteServiceConfig, SdConfig, SomeIpConfig};
 use ara_com_someip::transport::SomeIpTransport;
 
 use battery_service_example::generated::proxy::BatteryServiceProxy;

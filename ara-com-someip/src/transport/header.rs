@@ -320,7 +320,10 @@ mod tests {
             let (decoded, _, _, _) = decode_header(&encoded).unwrap_or_else(|e| {
                 panic!("decode failed for {mt:?}: {e}");
             });
-            assert_eq!(decoded.message_type, mt, "MessageType round-trip failed for {mt:?}");
+            assert_eq!(
+                decoded.message_type, mt,
+                "MessageType round-trip failed for {mt:?}"
+            );
         }
     }
 
@@ -359,7 +362,10 @@ mod tests {
             let (decoded, _, _, _) = decode_header(&encoded).unwrap_or_else(|e| {
                 panic!("decode failed for {rc:?}: {e}");
             });
-            assert_eq!(decoded.return_code, rc, "ReturnCode round-trip failed for {rc:?}");
+            assert_eq!(
+                decoded.return_code, rc,
+                "ReturnCode round-trip failed for {rc:?}"
+            );
         }
     }
 

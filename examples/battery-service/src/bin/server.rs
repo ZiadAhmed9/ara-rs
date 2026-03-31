@@ -64,7 +64,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             SERVICE_ID,
             INSTANCE_ID,
             Box::new(
-                |header: MessageHeader, payload: Bytes| -> BoxFuture<'static, Result<Bytes, AraComError>> {
+                |header: MessageHeader,
+                 payload: Bytes|
+                 -> BoxFuture<'static, Result<Bytes, AraComError>> {
                     Box::pin(async move {
                         match header.method_id.0 {
                             // MethodId(1) = GetVoltage
