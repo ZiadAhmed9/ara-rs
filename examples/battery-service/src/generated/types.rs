@@ -21,13 +21,13 @@ impl AraSerialize for BatteryStatus {
 }
 impl AraDeserialize for BatteryStatus {
     fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
+        #[allow(unused_mut)]
         let mut offset = 0usize;
         let voltage = <f64 as AraDeserialize>::ara_deserialize(&buf[offset..])?;
         offset += voltage.serialized_size();
         let current = <f64 as AraDeserialize>::ara_deserialize(&buf[offset..])?;
         offset += current.serialized_size();
         let charging = <bool as AraDeserialize>::ara_deserialize(&buf[offset..])?;
-        offset += charging.serialized_size();
         Ok(Self {
             voltage,
             current,

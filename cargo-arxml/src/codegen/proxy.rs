@@ -146,16 +146,24 @@ fn generate_proxy_method(
             .collect()
     };
 
+    let input_count = method.input_params.len();
     let deser_fields: Vec<TokenStream> = method
         .input_params
         .iter()
-        .map(|p| {
+        .enumerate()
+        .map(|(i, p)| {
             let pname = Ident::new(&snake_case(&p.name), Span::call_site());
             let ptype_str = resolve_type_name(&p.type_ref, project);
             let ptype: TokenStream = ptype_str.parse().unwrap_or_else(|_| quote! { () });
-            quote! {
-                let #pname = <#ptype as AraDeserialize>::ara_deserialize(&buf[offset..])?;
-                offset += #pname.serialized_size();
+            if i + 1 < input_count {
+                quote! {
+                    let #pname = <#ptype as AraDeserialize>::ara_deserialize(&buf[offset..])?;
+                    offset += #pname.serialized_size();
+                }
+            } else {
+                quote! {
+                    let #pname = <#ptype as AraDeserialize>::ara_deserialize(&buf[offset..])?;
+                }
             }
         })
         .collect();
@@ -194,6 +202,7 @@ fn generate_proxy_method(
 
         impl AraDeserialize for #req_struct_name {
             fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
+                #[allow(unused_mut)]
                 let mut offset = 0usize;
                 #(#deser_fields)*
                 Ok(Self { #(#req_field_names,)* })
@@ -247,16 +256,24 @@ fn generate_proxy_method(
                 .collect()
         };
 
+        let output_count = method.output_params.len();
         let resp_deser_fields: Vec<TokenStream> = method
             .output_params
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(i, p)| {
                 let pname = Ident::new(&snake_case(&p.name), Span::call_site());
                 let ptype_str = resolve_type_name(&p.type_ref, project);
                 let ptype: TokenStream = ptype_str.parse().unwrap_or_else(|_| quote! { () });
-                quote! {
-                    let #pname = <#ptype as AraDeserialize>::ara_deserialize(&buf[offset..])?;
-                    offset += #pname.serialized_size();
+                if i + 1 < output_count {
+                    quote! {
+                        let #pname = <#ptype as AraDeserialize>::ara_deserialize(&buf[offset..])?;
+                        offset += #pname.serialized_size();
+                    }
+                } else {
+                    quote! {
+                        let #pname = <#ptype as AraDeserialize>::ara_deserialize(&buf[offset..])?;
+                    }
                 }
             })
             .collect();
@@ -290,6 +307,7 @@ fn generate_proxy_method(
 
             impl AraDeserialize for #resp_struct_name {
                 fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
+                    #[allow(unused_mut)]
                     let mut offset = 0usize;
                     #(#resp_deser_fields)*
                     Ok(Self { #(#resp_field_names,)* })

@@ -138,17 +138,25 @@ fn generate_type(dt: &DataType, project: &ArxmlProject) -> Result<TokenStream, S
             };
 
             // Deserialization: each field in order, advancing offset
+            let field_count = fields.len();
             let deser_fields: Vec<TokenStream> = fields
                 .iter()
-                .map(|f| {
+                .enumerate()
+                .map(|(i, f)| {
                     let field_name = Ident::new(&snake_case(&f.name), Span::call_site());
                     let field_type_name = resolve_type_name(&f.type_ref, project);
                     let field_type: TokenStream = field_type_name
                         .parse()
                         .unwrap_or_else(|_| quote! { () });
-                    quote! {
-                        let #field_name = <#field_type as AraDeserialize>::ara_deserialize(&buf[offset..])?;
-                        offset += #field_name.serialized_size();
+                    if i + 1 < field_count {
+                        quote! {
+                            let #field_name = <#field_type as AraDeserialize>::ara_deserialize(&buf[offset..])?;
+                            offset += #field_name.serialized_size();
+                        }
+                    } else {
+                        quote! {
+                            let #field_name = <#field_type as AraDeserialize>::ara_deserialize(&buf[offset..])?;
+                        }
                     }
                 })
                 .collect();
@@ -178,6 +186,7 @@ fn generate_type(dt: &DataType, project: &ArxmlProject) -> Result<TokenStream, S
 
                 impl AraDeserialize for #type_name {
                     fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
+                        #[allow(unused_mut)]
                         let mut offset = 0usize;
                         #(#deser_fields)*
                         Ok(Self {

@@ -69,6 +69,7 @@ fn test_codegen_produces_all_expected_files() {
         "missing skeleton/battery_service.rs"
     );
     assert!(output.contains_key("tests.rs"), "missing tests.rs");
+    assert!(output.contains_key("mod.rs"), "missing mod.rs");
 }
 
 #[test]

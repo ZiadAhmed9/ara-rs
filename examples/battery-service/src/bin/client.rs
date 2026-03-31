@@ -24,7 +24,7 @@ use ara_com::types::{InstanceId, MajorVersion, MinorVersion};
 use ara_com_someip::config::{EndpointConfig, RemoteServiceConfig, SdConfig, SomeIpConfig};
 use ara_com_someip::transport::SomeIpTransport;
 
-use battery_service_example::generated::proxy::BatteryServiceProxy;
+use battery_service_example::generated::proxy::battery_service::BatteryServiceProxy;
 
 const SERVER_PORT: u16 = 30509;
 

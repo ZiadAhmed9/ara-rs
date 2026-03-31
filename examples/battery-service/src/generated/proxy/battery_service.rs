@@ -17,9 +17,9 @@ impl AraSerialize for GetVoltageRequest {
 }
 impl AraDeserialize for GetVoltageRequest {
     fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
+        #[allow(unused_mut)]
         let mut offset = 0usize;
         let battery_id = <u8 as AraDeserialize>::ara_deserialize(&buf[offset..])?;
-        offset += battery_id.serialized_size();
         Ok(Self { battery_id })
     }
 }
@@ -37,9 +37,9 @@ impl AraSerialize for GetVoltageResponse {
 }
 impl AraDeserialize for GetVoltageResponse {
     fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
+        #[allow(unused_mut)]
         let mut offset = 0usize;
         let voltage = <f64 as AraDeserialize>::ara_deserialize(&buf[offset..])?;
-        offset += voltage.serialized_size();
         Ok(Self { voltage })
     }
 }
@@ -57,9 +57,9 @@ impl AraSerialize for SetChargeLimitRequest {
 }
 impl AraDeserialize for SetChargeLimitRequest {
     fn ara_deserialize(buf: &[u8]) -> Result<Self, AraComError> {
+        #[allow(unused_mut)]
         let mut offset = 0usize;
         let limit = <f64 as AraDeserialize>::ara_deserialize(&buf[offset..])?;
-        offset += limit.serialized_size();
         Ok(Self { limit })
     }
 }

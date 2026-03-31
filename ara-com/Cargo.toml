@@ -6,6 +6,8 @@ license = "MIT OR Apache-2.0"
 description = "Core traits and async abstractions for Adaptive AUTOSAR communication in Rust"
 keywords = ["autosar", "automotive", "communication", "someip", "service-oriented"]
 categories = ["asynchronous", "network-programming"]
+repository = "https://github.com/ZiadAhmed9/ara-rs"
+homepage = "https://github.com/ZiadAhmed9/ara-rs"
 
 [dependencies]
 async-trait = "0.1"

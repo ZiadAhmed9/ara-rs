@@ -6,9 +6,11 @@ license = "MIT OR Apache-2.0"
 description = "SOME/IP transport backend for ara-com Adaptive AUTOSAR communication"
 keywords = ["autosar", "someip", "automotive", "service-discovery"]
 categories = ["network-programming", "asynchronous"]
+repository = "https://github.com/ZiadAhmed9/ara-rs"
+homepage = "https://github.com/ZiadAhmed9/ara-rs"
 
 [dependencies]
-ara-com = { path = "../ara-com" }
+ara-com = { version = "0.1.0", path = "../ara-com" }
 someip_parse = "0.6"
 tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "sync", "time"] }
 bytes = "1"

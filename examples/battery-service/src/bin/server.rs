@@ -21,10 +21,10 @@ use ara_com::types::{InstanceId, ServiceId};
 use ara_com_someip::config::{EndpointConfig, SdConfig, ServiceConfig, SomeIpConfig};
 use ara_com_someip::transport::SomeIpTransport;
 
-use battery_service_example::generated::proxy::{
+use battery_service_example::generated::proxy::battery_service::{
     GetVoltageRequest, GetVoltageResponse, SetChargeLimitRequest,
 };
-use battery_service_example::generated::skeleton::BatteryServiceSkeleton;
+use battery_service_example::generated::skeleton::battery_service::BatteryServiceSkeleton;
 
 /// Service ID 0x1000 — auto-assigned by cargo-arxml codegen.
 const SERVICE_ID: ServiceId = ServiceId(0x1000);

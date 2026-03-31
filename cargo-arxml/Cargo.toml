@@ -6,6 +6,8 @@ license = "MIT OR Apache-2.0"
 description = "ARXML parser, validator, and Rust code generator for Adaptive AUTOSAR"
 keywords = ["autosar", "arxml", "code-generator", "automotive", "someip"]
 categories = ["development-tools", "code-generators"]
+repository = "https://github.com/ZiadAhmed9/ara-rs"
+homepage = "https://github.com/ZiadAhmed9/ara-rs"
 
 [[bin]]
 name = "cargo-arxml"
