@@ -3,7 +3,8 @@ use std::path::Path;
 use autosar_data::{AutosarModel, ElementName, EnumItem};
 
 use self::ir::{
-    ArxmlProject, DataType, Event, Field, Method, ParamDirection, Parameter, ServiceInterface,
+    ArxmlProject, DataType, Event, EventDeployment, EventGroupDeployment, Field, Method,
+    MethodDeployment, ParamDirection, Parameter, ServiceInterface, SomeipDeployment,
 };
 use crate::error::CargoArxmlError;
 
@@ -94,9 +95,16 @@ impl ArxmlParser {
                         project.data_types.push(dt);
                     }
                 }
+                ElementName::SomeipServiceInterfaceDeployment => {
+                    if let Some(dep) = self.extract_someip_deployment(&element) {
+                        project.deployments.push(dep);
+                    }
+                }
                 _ => {}
             }
         }
+
+        Self::merge_deployments(&mut project);
 
         Ok(project)
     }
@@ -392,6 +400,65 @@ impl ArxmlParser {
         fields
     }
 
+    fn extract_someip_deployment(
+        &self,
+        element: &autosar_data::Element,
+    ) -> Option<SomeipDeployment> {
+        let service_interface_ref = element
+            .get_sub_element(ElementName::ServiceInterfaceRef)
+            .and_then(|e| e.character_data())
+            .and_then(|cd| cd.string_value())?;
+
+        let service_id = extract_u16_value(element, ElementName::ServiceInterfaceId)?;
+
+        let mut method_deployments: Vec<MethodDeployment> = Vec::new();
+        let mut event_deployments: Vec<EventDeployment> = Vec::new();
+        let mut event_groups: Vec<EventGroupDeployment> = Vec::new();
+
+        for (_depth, child) in element.elements_dfs() {
+            let short_name = || {
+                child
+                    .get_sub_element(ElementName::ShortName)
+                    .and_then(|e| e.character_data())
+                    .and_then(|cd| cd.string_value())
+                    .unwrap_or_default()
+            };
+            match child.element_name() {
+                ElementName::SomeipMethodDeployment => {
+                    let method_id = extract_u16_value(&child, ElementName::MethodId).unwrap_or(0);
+                    method_deployments.push(MethodDeployment {
+                        short_name: short_name(),
+                        method_id,
+                    });
+                }
+                ElementName::SomeipEventDeployment => {
+                    let event_id = extract_u16_value(&child, ElementName::EventId).unwrap_or(0);
+                    event_deployments.push(EventDeployment {
+                        short_name: short_name(),
+                        event_id,
+                    });
+                }
+                ElementName::SomeipEventGroup => {
+                    let event_group_id =
+                        extract_u16_value(&child, ElementName::EventGroupId).unwrap_or(0);
+                    event_groups.push(EventGroupDeployment {
+                        short_name: short_name(),
+                        event_group_id,
+                    });
+                }
+                _ => {}
+            }
+        }
+
+        Some(SomeipDeployment {
+            service_interface_ref,
+            service_id,
+            method_deployments,
+            event_deployments,
+            event_groups,
+        })
+    }
+
     fn extract_data_type(&self, element: &autosar_data::Element) -> Option<DataType> {
         let short_name = element
             .get_sub_element(ElementName::ShortName)
@@ -475,11 +542,62 @@ impl ArxmlParser {
             description,
         })
     }
+
+    /// Correlate SOME/IP deployment data with parsed service interfaces.
+    fn merge_deployments(project: &mut ArxmlProject) {
+        for deployment in &project.deployments {
+            let svc = project
+                .services
+                .iter_mut()
+                .find(|s| s.path == deployment.service_interface_ref);
+            let svc = match svc {
+                Some(s) => s,
+                None => continue,
+            };
+
+            svc.service_id = Some(deployment.service_id);
+
+            for md in &deployment.method_deployments {
+                if let Some(method) = svc.methods.iter_mut().find(|m| m.name == md.short_name) {
+                    method.method_id = Some(md.method_id);
+                }
+            }
+
+            for ed in &deployment.event_deployments {
+                if let Some(event) = svc.events.iter_mut().find(|e| e.name == ed.short_name) {
+                    event.event_id = Some(ed.event_id);
+                }
+            }
+
+            // Full AUTOSAR maps events to groups via refs; here we assign the first group to all
+            // events that don't already have one.
+            if let Some(eg) = deployment.event_groups.first() {
+                for event in &mut svc.events {
+                    if event.event_group_id.is_none() {
+                        event.event_group_id = Some(eg.event_group_id);
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Free helpers
 // ---------------------------------------------------------------------------
+
+/// Extract a u16 value from a sub-element, trying both `unsigned_integer_value()`
+/// and string parsing (AUTOSAR stores these as strings in some schema versions).
+fn extract_u16_value(element: &autosar_data::Element, name: ElementName) -> Option<u16> {
+    element
+        .get_sub_element(name)
+        .and_then(|e| e.character_data())
+        .and_then(|cd| {
+            cd.unsigned_integer_value()
+                .and_then(|v| u16::try_from(v).ok())
+                .or_else(|| cd.string_value().and_then(|s| s.parse::<u16>().ok()))
+        })
+}
 
 fn extract_struct_fields(element: &autosar_data::Element) -> Vec<ir::StructField> {
     let mut fields = Vec::new();

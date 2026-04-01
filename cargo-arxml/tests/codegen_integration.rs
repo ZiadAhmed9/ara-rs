@@ -175,3 +175,77 @@ fn test_generated_skeleton_contains_expected_structure() {
         "missing stop_offer method"
     );
 }
+
+#[test]
+fn test_parse_someip_deployment_ids() {
+    let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
+    let project = parser.extract_ir().expect("failed to extract IR");
+
+    assert!(!project.services.is_empty(), "no services parsed");
+    let svc = &project.services[0];
+
+    // Service ID from deployment (0x4010 = 16400)
+    assert_eq!(
+        svc.service_id,
+        Some(0x4010),
+        "service_id should come from deployment"
+    );
+
+    // Method IDs from deployment
+    assert_eq!(svc.methods[0].method_id, Some(1), "GetVoltage method_id");
+    assert_eq!(
+        svc.methods[1].method_id,
+        Some(2),
+        "SetChargeLimit method_id"
+    );
+
+    // Event ID from deployment (0x8001 = 32769)
+    assert_eq!(
+        svc.events[0].event_id,
+        Some(0x8001),
+        "VoltageChanged event_id"
+    );
+
+    // Event group ID from deployment
+    assert_eq!(
+        svc.events[0].event_group_id,
+        Some(1),
+        "VoltageChanged event_group_id"
+    );
+}
+
+#[test]
+fn test_deployment_ids_survive_assign_default_ids() {
+    let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
+    let project = parser.extract_ir().expect("failed to extract IR");
+
+    // IDs should already be Some(...) from deployment so assign_default_ids won't overwrite them
+    assert!(
+        project.services[0].service_id.is_some(),
+        "service_id should be set from deployment"
+    );
+    assert!(
+        project.services[0].methods[0].method_id.is_some(),
+        "method_id should be set from deployment"
+    );
+    assert!(
+        project.services[0].events[0].event_id.is_some(),
+        "event_id should be set from deployment"
+    );
+}
+
+#[test]
+fn test_generated_proxy_uses_deployment_ids() {
+    let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
+    let project = parser.extract_ir().expect("failed to extract IR");
+    let gen = CodeGenerator::new(&project);
+    let output = gen.generate().expect("code generation failed");
+
+    let proxy = &output["proxy/battery_service.rs"];
+    // Should use ServiceId(16400) = 0x4010, not ServiceId(4096) = 0x1000 (the auto-assigned default)
+    assert!(
+        proxy.contains("ServiceId(16400)"),
+        "proxy should use deployment service_id 0x4010 (16400), got snippet: {}",
+        proxy.chars().take(400).collect::<String>()
+    );
+}

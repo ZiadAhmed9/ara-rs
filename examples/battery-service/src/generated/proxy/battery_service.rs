@@ -70,7 +70,7 @@ impl<T: Transport> BatteryServiceProxy<T> {
     /// Create a new proxy connected to the given transport and instance.
     pub fn new(transport: Arc<T>, instance_id: InstanceId) -> Self {
         Self {
-            base: ProxyBase::with_defaults(transport, ServiceId(4096), instance_id),
+            base: ProxyBase::with_defaults(transport, ServiceId(16400), instance_id),
         }
     }
     pub async fn get_voltage(&self, battery_id: u8) -> Result<f64, AraComError> {

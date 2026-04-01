@@ -7,6 +7,41 @@ pub struct ArxmlProject {
     pub data_types: Vec<DataType>,
     /// Paths of source ARXML files that were loaded.
     pub source_files: Vec<String>,
+    /// SOME/IP deployment configurations parsed from ARXML.
+    pub deployments: Vec<SomeipDeployment>,
+}
+
+/// SOME/IP deployment configuration for a service interface.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SomeipDeployment {
+    /// Reference path to the service interface (e.g., "/services/BatteryService")
+    pub service_interface_ref: String,
+    /// SOME/IP service ID
+    pub service_id: u16,
+    /// Method deployments
+    pub method_deployments: Vec<MethodDeployment>,
+    /// Event deployments
+    pub event_deployments: Vec<EventDeployment>,
+    /// Event group definitions
+    pub event_groups: Vec<EventGroupDeployment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MethodDeployment {
+    pub short_name: String,
+    pub method_id: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventDeployment {
+    pub short_name: String,
+    pub event_id: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventGroupDeployment {
+    pub short_name: String,
+    pub event_group_id: u16,
 }
 
 /// A service interface (maps to a AUTOSAR `SERVICE-INTERFACE` element).

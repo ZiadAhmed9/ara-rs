@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sd_config: SdConfig::default(),
         services: vec![],
         remote_services: vec![RemoteServiceConfig {
-            service_id: ara_com::types::ServiceId(0x1000),
+            service_id: ara_com::types::ServiceId(0x4010),
             instance_id: InstanceId(0x0001),
             endpoint: EndpointConfig {
                 udp: Some(SocketAddrV4::new(Ipv4Addr::LOCALHOST, SERVER_PORT)),
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Find the service (static mode)
     let found = transport
         .find_service(
-            ara_com::types::ServiceId(0x1000),
+            ara_com::types::ServiceId(0x4010),
             InstanceId(0x0001),
             MajorVersion(1),
             MinorVersion(0),

@@ -9,7 +9,7 @@ pub struct BatteryServiceSkeleton<T: Transport> {
 impl<T: Transport> BatteryServiceSkeleton<T> {
     pub fn new(transport: Arc<T>, instance_id: InstanceId) -> Self {
         Self {
-            base: SkeletonBase::new(transport, ServiceId(4096), instance_id),
+            base: SkeletonBase::new(transport, ServiceId(16400), instance_id),
         }
     }
     pub async fn offer(&self) -> Result<(), AraComError> {
@@ -28,7 +28,7 @@ impl<T: Transport> BatteryServiceSkeleton<T> {
         let mut buf = Vec::new();
         payload.ara_serialize(&mut buf)?;
         let header = MessageHeader {
-            service_id: ServiceId(4096),
+            service_id: ServiceId(16400),
             method_id: MethodId(32769),
             instance_id: self.base.instance_id(),
             session_id: 0,

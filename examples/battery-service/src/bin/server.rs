@@ -26,8 +26,8 @@ use battery_service_example::generated::proxy::battery_service::{
 };
 use battery_service_example::generated::skeleton::battery_service::BatteryServiceSkeleton;
 
-/// Service ID 0x1000 — auto-assigned by cargo-arxml codegen.
-const SERVICE_ID: ServiceId = ServiceId(0x1000);
+/// Service ID 0x4010 — from SOMEIP-SERVICE-INTERFACE-DEPLOYMENT in battery_service.arxml.
+const SERVICE_ID: ServiceId = ServiceId(0x4010);
 const INSTANCE_ID: InstanceId = InstanceId(0x0001);
 const SERVER_PORT: u16 = 30509;
 

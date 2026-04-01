@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00051.xsd">
+<AUTOSAR xmlns="http://autosar.org/schema/r4.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://autosar.org/schema/r4.0 AUTOSAR_00048.xsd">
   <AR-PACKAGES>
     <AR-PACKAGE>
       <SHORT-NAME>services</SHORT-NAME>
@@ -84,6 +84,38 @@
             </IMPLEMENTATION-DATA-TYPE-ELEMENT>
           </SUB-ELEMENTS>
         </IMPLEMENTATION-DATA-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+    <AR-PACKAGE>
+      <SHORT-NAME>deployment</SHORT-NAME>
+      <ELEMENTS>
+        <SOMEIP-SERVICE-INTERFACE-DEPLOYMENT>
+          <SHORT-NAME>BatteryServiceDeployment</SHORT-NAME>
+          <SERVICE-INTERFACE-REF DEST="SERVICE-INTERFACE">/services/BatteryService</SERVICE-INTERFACE-REF>
+          <SERVICE-INTERFACE-ID>16400</SERVICE-INTERFACE-ID>
+          <METHOD-DEPLOYMENTS>
+            <SOMEIP-METHOD-DEPLOYMENT>
+              <SHORT-NAME>GetVoltage</SHORT-NAME>
+              <METHOD-ID>1</METHOD-ID>
+            </SOMEIP-METHOD-DEPLOYMENT>
+            <SOMEIP-METHOD-DEPLOYMENT>
+              <SHORT-NAME>SetChargeLimit</SHORT-NAME>
+              <METHOD-ID>2</METHOD-ID>
+            </SOMEIP-METHOD-DEPLOYMENT>
+          </METHOD-DEPLOYMENTS>
+          <EVENT-DEPLOYMENTS>
+            <SOMEIP-EVENT-DEPLOYMENT>
+              <SHORT-NAME>VoltageChanged</SHORT-NAME>
+              <EVENT-ID>32769</EVENT-ID>
+            </SOMEIP-EVENT-DEPLOYMENT>
+          </EVENT-DEPLOYMENTS>
+          <EVENT-GROUPS>
+            <SOMEIP-EVENT-GROUP>
+              <SHORT-NAME>VoltageEvents</SHORT-NAME>
+              <EVENT-GROUP-ID>1</EVENT-GROUP-ID>
+            </SOMEIP-EVENT-GROUP>
+          </EVENT-GROUPS>
+        </SOMEIP-SERVICE-INTERFACE-DEPLOYMENT>
       </ELEMENTS>
     </AR-PACKAGE>
   </AR-PACKAGES>
