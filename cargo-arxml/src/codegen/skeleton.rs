@@ -19,7 +19,7 @@ pub fn generate_skeleton(
         .map(|d| quote! { #[doc = #d] })
         .unwrap_or_default();
 
-    let service_id_val = svc.service_id.unwrap_or(0);
+    let service_id_val = svc.service_id.expect("ID must be set after assign_default_ids");
     let service_id_lit = Literal::u16_unsuffixed(service_id_val);
 
     let major_lit = Literal::u8_unsuffixed(svc.major_version);
@@ -87,9 +87,9 @@ fn generate_event_notify(event: &crate::parser::ir::Event, svc: &ServiceInterfac
         .map(|d| quote! { #[doc = #d] })
         .unwrap_or_default();
 
-    let event_id_val = event.event_id.unwrap_or(0x8001);
+    let event_id_val = event.event_id.expect("event ID must be set after assign_default_ids");
     let event_id_lit = Literal::u16_unsuffixed(event_id_val);
-    let service_id_val = svc.service_id.unwrap_or(0);
+    let service_id_val = svc.service_id.expect("ID must be set after assign_default_ids");
     let service_id_lit = Literal::u16_unsuffixed(service_id_val);
 
     quote! {

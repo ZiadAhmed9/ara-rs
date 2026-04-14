@@ -34,6 +34,11 @@ enum Command {
         /// Directory to write the generated Rust source files into.
         #[arg(long)]
         output_dir: PathBuf,
+
+        /// Treat auto-assigned IDs as errors instead of warnings.
+        /// Use this to ensure all SOME/IP IDs come from ARXML deployments.
+        #[arg(long)]
+        strict: bool,
     },
 
     /// Parse ARXML files and dump the extracted IR as JSON.
@@ -52,7 +57,11 @@ fn main() {
 
     let result = match cli.command {
         Command::Validate { path } => run_validate(&path),
-        Command::Generate { path, output_dir } => run_generate(&path, &output_dir),
+        Command::Generate {
+            path,
+            output_dir,
+            strict,
+        } => run_generate(&path, &output_dir, strict),
         Command::Inspect { path } => run_inspect(&path),
     };
 
@@ -95,13 +104,53 @@ fn run_validate(path: &std::path::Path) -> Result<(), CargoArxmlError> {
 fn run_generate(
     path: &std::path::Path,
     output_dir: &std::path::Path,
+    strict: bool,
 ) -> Result<(), CargoArxmlError> {
+    use cargo_arxml::codegen::assign_default_ids;
+
     eprintln!("Loading ARXML files from '{}'…", path.display());
 
     let parser = ArxmlParser::load(path)?;
-    let project = parser.extract_ir()?;
+    let mut project = parser.extract_ir()?;
 
-    // Validation is a prerequisite for code generation.
+    // Auto-assign missing IDs first, so validation catches collisions
+    // between explicit IDs and auto-assigned ones.
+    let auto_assignments = assign_default_ids(&mut project);
+
+    // Surface auto-assigned IDs so they are never silent.
+    if !auto_assignments.is_empty() {
+        if strict {
+            eprintln!(
+                "error: {} SOME/IP ID(s) missing from ARXML (--strict mode):",
+                auto_assignments.len()
+            );
+            for (i, a) in auto_assignments.iter().enumerate() {
+                eprintln!("  [{}] {}", i + 1, a);
+            }
+            eprintln!();
+            eprintln!("Add SOMEIP-SERVICE-INTERFACE-DEPLOYMENT entries to your ARXML,");
+            eprintln!("or remove --strict to allow auto-assignment with warnings.");
+            return Err(CargoArxmlError::CodeGen {
+                message: format!(
+                    "{} SOME/IP ID(s) missing — add deployment entries or remove --strict",
+                    auto_assignments.len()
+                ),
+            });
+        }
+
+        eprintln!(
+            "warning: {} SOME/IP ID(s) were auto-assigned (not from ARXML):",
+            auto_assignments.len()
+        );
+        for (i, a) in auto_assignments.iter().enumerate() {
+            eprintln!("  [{}] {}", i + 1, a);
+        }
+        eprintln!(
+            "hint: add SOMEIP-SERVICE-INTERFACE-DEPLOYMENT entries to silence these warnings."
+        );
+    }
+
+    // Validation runs after auto-assignment so it catches all ID collisions.
     let errors = validator::validate(&project);
     if !errors.is_empty() {
         eprintln!(
@@ -115,7 +164,7 @@ fn run_generate(
     }
 
     let generator = CodeGenerator::new(&project);
-    let files = generator.generate()?;
+    let (files, _) = generator.generate()?;
 
     // Create output directory if it does not exist.
     std::fs::create_dir_all(output_dir).map_err(|e| CargoArxmlError::Io {

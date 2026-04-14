@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::error::CargoArxmlError;
 use crate::parser::ir::ArxmlProject;
@@ -8,6 +9,55 @@ pub mod skeleton;
 pub mod tests_gen;
 pub mod traits;
 pub mod types;
+
+/// Describes an ID that was auto-assigned because the ARXML did not provide one.
+#[derive(Debug, Clone)]
+pub struct IdAssignment {
+    pub service_name: String,
+    pub element_name: Option<String>,
+    pub kind: IdKind,
+    pub assigned_value: u16,
+}
+
+#[derive(Debug, Clone)]
+pub enum IdKind {
+    ServiceId,
+    MethodId,
+    EventId,
+    EventGroupId,
+}
+
+impl fmt::Display for IdAssignment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match (&self.kind, &self.element_name) {
+            (IdKind::ServiceId, _) => write!(
+                f,
+                "service '{}': missing service ID, auto-assigned {:#06x}",
+                self.service_name, self.assigned_value
+            ),
+            (IdKind::MethodId, Some(name)) => write!(
+                f,
+                "service '{}', method '{}': missing method ID, auto-assigned {:#06x}",
+                self.service_name, name, self.assigned_value
+            ),
+            (IdKind::EventId, Some(name)) => write!(
+                f,
+                "service '{}', event '{}': missing event ID, auto-assigned {:#06x}",
+                self.service_name, name, self.assigned_value
+            ),
+            (IdKind::EventGroupId, Some(name)) => write!(
+                f,
+                "service '{}', event '{}': missing event group ID, auto-assigned {:#06x}",
+                self.service_name, name, self.assigned_value
+            ),
+            _ => write!(
+                f,
+                "service '{}': missing {:?} ID, auto-assigned {:#06x}",
+                self.service_name, self.kind, self.assigned_value
+            ),
+        }
+    }
+}
 
 /// Top-level code generator.
 ///
@@ -25,11 +75,17 @@ impl<'a> CodeGenerator<'a> {
 
     /// Generate all Rust source files for the project.
     ///
-    /// Returns a `HashMap<filename, source>`.  Filenames are relative paths
-    /// (e.g. `"types.rs"`, `"proxy/battery_service.rs"`).
-    pub fn generate(&self) -> Result<HashMap<String, String>, CargoArxmlError> {
+    /// Returns a tuple of `(files, auto_assignments)`. Files is a map of
+    /// `filename → source`. Auto-assignments lists every ID that was
+    /// invented because the ARXML lacked a SOME/IP deployment for it.
+    ///
+    /// Callers should inspect `auto_assignments` and decide whether to
+    /// warn, error, or proceed silently.
+    pub fn generate(
+        &self,
+    ) -> Result<(HashMap<String, String>, Vec<IdAssignment>), CargoArxmlError> {
         let mut project = self.project.clone();
-        assign_default_ids(&mut project);
+        let auto_assignments = assign_default_ids(&mut project);
 
         let mut output: HashMap<String, String> = HashMap::new();
 
@@ -60,7 +116,7 @@ impl<'a> CodeGenerator<'a> {
         let mod_src = generate_mod_rs(&project);
         output.insert("mod.rs".to_string(), mod_src);
 
-        Ok(output)
+        Ok((output, auto_assignments))
     }
 }
 
@@ -105,27 +161,106 @@ fn generate_mod_rs(project: &ArxmlProject) -> String {
 }
 
 /// Assign default SOME/IP IDs to services, methods, and events that don't have them.
-/// Uses sequential assignment: service IDs start at 0x1000, method IDs at 0x0001,
-/// event IDs at 0x8001 (events use the 0x8000+ range per SOME/IP spec).
-pub fn assign_default_ids(project: &mut ArxmlProject) {
-    for (svc_idx, svc) in project.services.iter_mut().enumerate() {
+///
+/// Returns a list of every ID that was auto-assigned. An empty list means all
+/// IDs were already present in the ARXML (the ideal case).
+///
+/// Auto-assigned IDs avoid collisions with explicit IDs already present in the
+/// same service by collecting used IDs first and picking the next available value.
+pub fn assign_default_ids(project: &mut ArxmlProject) -> Vec<IdAssignment> {
+    use std::collections::HashSet;
+
+    let mut assignments = Vec::new();
+
+    // Collect existing service IDs to avoid collisions at workspace level.
+    let mut used_service_ids: HashSet<u16> = project
+        .services
+        .iter()
+        .filter_map(|s| s.service_id)
+        .collect();
+
+    for svc in project.services.iter_mut() {
         if svc.service_id.is_none() {
-            svc.service_id = Some(0x1000 + svc_idx as u16);
+            let id = next_available(0x1000, &used_service_ids);
+            used_service_ids.insert(id);
+            svc.service_id = Some(id);
+            assignments.push(IdAssignment {
+                service_name: svc.short_name.clone(),
+                element_name: None,
+                kind: IdKind::ServiceId,
+                assigned_value: id,
+            });
         }
-        for (m_idx, method) in svc.methods.iter_mut().enumerate() {
+
+        // Collect existing method IDs within this service.
+        let mut used_method_ids: HashSet<u16> = svc
+            .methods
+            .iter()
+            .filter_map(|m| m.method_id)
+            .collect();
+
+        for method in svc.methods.iter_mut() {
             if method.method_id.is_none() {
-                method.method_id = Some(1 + m_idx as u16);
+                let id = next_available(0x0001, &used_method_ids);
+                used_method_ids.insert(id);
+                method.method_id = Some(id);
+                assignments.push(IdAssignment {
+                    service_name: svc.short_name.clone(),
+                    element_name: Some(method.name.clone()),
+                    kind: IdKind::MethodId,
+                    assigned_value: id,
+                });
             }
         }
-        for (e_idx, event) in svc.events.iter_mut().enumerate() {
+
+        // Collect existing event IDs within this service.
+        let mut used_event_ids: HashSet<u16> = svc
+            .events
+            .iter()
+            .filter_map(|e| e.event_id)
+            .collect();
+        let mut used_event_group_ids: HashSet<u16> = svc
+            .events
+            .iter()
+            .filter_map(|e| e.event_group_id)
+            .collect();
+
+        for event in svc.events.iter_mut() {
             if event.event_id.is_none() {
-                event.event_id = Some(0x8001 + e_idx as u16);
+                let id = next_available(0x8001, &used_event_ids);
+                used_event_ids.insert(id);
+                event.event_id = Some(id);
+                assignments.push(IdAssignment {
+                    service_name: svc.short_name.clone(),
+                    element_name: Some(event.name.clone()),
+                    kind: IdKind::EventId,
+                    assigned_value: id,
+                });
             }
             if event.event_group_id.is_none() {
-                event.event_group_id = Some(1 + e_idx as u16);
+                let id = next_available(0x0001, &used_event_group_ids);
+                used_event_group_ids.insert(id);
+                event.event_group_id = Some(id);
+                assignments.push(IdAssignment {
+                    service_name: svc.short_name.clone(),
+                    element_name: Some(event.name.clone()),
+                    kind: IdKind::EventGroupId,
+                    assigned_value: id,
+                });
             }
         }
     }
+
+    assignments
+}
+
+/// Find the next available ID starting from `start` that is not in `used`.
+fn next_available(start: u16, used: &std::collections::HashSet<u16>) -> u16 {
+    let mut id = start;
+    while used.contains(&id) {
+        id = id.checked_add(1).expect("SOME/IP ID space exhausted");
+    }
+    id
 }
 
 // ---------------------------------------------------------------------------

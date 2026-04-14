@@ -55,7 +55,7 @@ fn test_codegen_produces_all_expected_files() {
     let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let gen = CodeGenerator::new(&project);
-    let output = gen.generate().expect("code generation failed");
+    let output = gen.generate().expect("code generation failed").0;
 
     // Expected files
     assert!(output.contains_key("types.rs"), "missing types.rs");
@@ -77,7 +77,7 @@ fn test_generated_types_contain_expected_identifiers() {
     let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let gen = CodeGenerator::new(&project);
-    let output = gen.generate().expect("code generation failed");
+    let output = gen.generate().expect("code generation failed").0;
 
     let types = &output["types.rs"];
     assert!(
@@ -105,7 +105,7 @@ fn test_generated_traits_contain_expected_methods() {
     let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let gen = CodeGenerator::new(&project);
-    let output = gen.generate().expect("code generation failed");
+    let output = gen.generate().expect("code generation failed").0;
 
     let traits = &output["traits.rs"];
     assert!(traits.contains("pub trait BatteryService"), "missing trait");
@@ -124,7 +124,7 @@ fn test_generated_proxy_contains_expected_structure() {
     let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let gen = CodeGenerator::new(&project);
-    let output = gen.generate().expect("code generation failed");
+    let output = gen.generate().expect("code generation failed").0;
 
     let proxy = &output["proxy/battery_service.rs"];
     assert!(
@@ -158,7 +158,7 @@ fn test_generated_skeleton_contains_expected_structure() {
     let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let gen = CodeGenerator::new(&project);
-    let output = gen.generate().expect("code generation failed");
+    let output = gen.generate().expect("code generation failed").0;
 
     let skeleton = &output["skeleton/battery_service.rs"];
     assert!(
@@ -239,7 +239,7 @@ fn test_generated_proxy_uses_deployment_ids() {
     let parser = ArxmlParser::load(Path::new(FIXTURE_PATH)).expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let gen = CodeGenerator::new(&project);
-    let output = gen.generate().expect("code generation failed");
+    let output = gen.generate().expect("code generation failed").0;
 
     let proxy = &output["proxy/battery_service.rs"];
     // Should use ServiceId(16400) = 0x4010, not ServiceId(4096) = 0x1000 (the auto-assigned default)
