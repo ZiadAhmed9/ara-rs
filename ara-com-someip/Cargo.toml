@@ -12,7 +12,7 @@ homepage = "https://github.com/ZiadAhmed9/ara-rs"
 [dependencies]
 ara-com = { version = "0.1.0", path = "../ara-com" }
 someip_parse = "0.6"
-tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["net", "rt-multi-thread", "macros", "sync", "time", "io-util"] }
 bytes = "1"
 dashmap = "6"
 tokio-util = "0.7"

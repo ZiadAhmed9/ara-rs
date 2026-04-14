@@ -45,6 +45,7 @@ fn skeleton_config(port: u16) -> SomeIpConfig {
             event_groups: vec![],
         }],
         remote_services: vec![],
+        udp_threshold: 1400,
     }
 }
 
@@ -65,6 +66,7 @@ fn proxy_config(skeleton_port: u16) -> SomeIpConfig {
                 udp_threshold: 1400,
             },
         }],
+        udp_threshold: 1400,
     }
 }
 

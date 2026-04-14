@@ -14,21 +14,26 @@ pub enum DiscoveryMode {
     SomeIpSd,
 }
 
-/// Top-level SOME/IP transport configuration
+/// Top-level SOME/IP transport configuration.
 #[derive(Debug, Clone)]
 pub struct SomeIpConfig {
-    /// Unicast address for this application
+    /// Unicast address for this application.
     pub unicast: Ipv4Addr,
-    /// Client ID for this application (unique per ECU)
+    /// Client ID for this application (unique per ECU).
     pub client_id: u16,
-    /// Discovery mode: static endpoints or SOME/IP-SD
+    /// Discovery mode: static endpoints or SOME/IP-SD.
     pub discovery_mode: DiscoveryMode,
-    /// Service discovery configuration (used when discovery_mode == SomeIpSd)
+    /// Service discovery configuration (used when discovery_mode == SomeIpSd).
     pub sd_config: SdConfig,
-    /// Local service endpoint configurations
+    /// Local service endpoint configurations.
     pub services: Vec<ServiceConfig>,
-    /// Remote service endpoints for static discovery mode
+    /// Remote service endpoints for static discovery mode.
     pub remote_services: Vec<RemoteServiceConfig>,
+    /// Default UDP/TCP payload threshold (bytes) used for dynamically
+    /// discovered services when no per-service config is available.
+    /// Payloads >= this size are sent over TCP when a TCP endpoint exists.
+    /// Defaults to 1400 (typical Ethernet MTU minus headers).
+    pub udp_threshold: usize,
 }
 
 /// Pre-configured remote service endpoint (for static discovery mode).

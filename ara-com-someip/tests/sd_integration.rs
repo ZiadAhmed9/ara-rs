@@ -77,6 +77,7 @@ fn skeleton_sd_config(data_port: u16, sd_port: u16) -> SomeIpConfig {
             event_groups: vec![],
         }],
         remote_services: vec![],
+        udp_threshold: 1400,
     }
 }
 
@@ -89,6 +90,7 @@ fn proxy_sd_config(sd_port: u16) -> SomeIpConfig {
         sd_config: sd_config(sd_port),
         services: vec![],
         remote_services: vec![],
+        udp_threshold: 1400,
     }
 }
 

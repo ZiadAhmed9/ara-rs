@@ -1,4 +1,8 @@
 //! SOME/IP transport implementation of the `ara_com::transport::Transport` trait.
+//!
+//! Supports both UDP and TCP transports. UDP is used for small payloads and
+//! notifications; TCP is used when payload size exceeds `udp_threshold` or
+//! when only a TCP endpoint is configured.
 
 pub mod header;
 
@@ -10,7 +14,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use dashmap::DashMap;
 use futures_core::future::BoxFuture;
-use tokio::net::UdpSocket;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{broadcast, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -39,18 +44,32 @@ type RequestHandler = Box<
 type PendingResponse = oneshot::Sender<(MessageHeader, Bytes)>;
 
 // ---------------------------------------------------------------------------
+// Resolved endpoint
+// ---------------------------------------------------------------------------
+
+/// A resolved remote endpoint with protocol information.
+#[derive(Debug, Clone, Copy)]
+enum ResolvedEndpoint {
+    Udp(SocketAddrV4),
+    Tcp(SocketAddrV4),
+}
+
+// ---------------------------------------------------------------------------
 // SomeIpTransport
 // ---------------------------------------------------------------------------
 
 /// SOME/IP transport implementation.
 ///
-/// Call [`SomeIpTransport::bind`] after construction to open the UDP socket and
-/// start the background receive loop. Until `bind()` is called, all Transport
-/// methods will return an error.
+/// Call [`SomeIpTransport::bind`] after construction to open the UDP and/or
+/// TCP sockets and start the background receive loops. Until `bind()` is
+/// called, all Transport methods will return an error.
 pub struct SomeIpTransport {
     config: SomeIpConfig,
     /// UDP socket for send/receive.
     udp_socket: Option<Arc<UdpSocket>>,
+    /// TCP listener handles for incoming connections (skeleton side).
+    /// One per distinct TCP port across all configured services.
+    tcp_listener_handles: Vec<JoinHandle<()>>,
     /// Client ID for this application (bytes 8-9 of the SOME/IP header).
     client_id: u16,
     /// Monotonically increasing session counter for request correlation.
@@ -87,6 +106,7 @@ impl SomeIpTransport {
         Self {
             config,
             udp_socket: None,
+            tcp_listener_handles: Vec::new(),
             client_id,
             session_counter: AtomicU16::new(1),
             pending_requests: Arc::new(DashMap::new()),
@@ -100,10 +120,12 @@ impl SomeIpTransport {
         }
     }
 
-    /// Bind the UDP socket and start the background receive loop.
+    /// Bind the UDP (and optionally TCP) sockets and start background receive
+    /// loops.
     ///
-    /// Binds to `0.0.0.0:{port}` where port is taken from the first local
-    /// service endpoint, or a random port if no services are configured.
+    /// UDP binds to `0.0.0.0:{port}` where port is taken from the first local
+    /// service endpoint, or a random port if no services are configured. If a
+    /// TCP endpoint is configured, a TCP listener is also started on its port.
     pub async fn bind(&mut self) -> Result<(), SomeIpError> {
         let bind_addr = self
             .config
@@ -151,7 +173,58 @@ impl SomeIpTransport {
             self.sd.start().await?;
         }
 
-        // Start background receive loop.
+        // --- TCP listeners (server side) ---
+        //
+        // Bind a TCP listener for every distinct TCP port across all
+        // configured local services. Each listener shares the same
+        // handler/pending/notification maps.
+        let mut bound_tcp_ports = std::collections::HashSet::new();
+        for svc in &self.config.services {
+            if let Some(tcp_addr) = svc.endpoint.tcp {
+                if !bound_tcp_ports.insert(tcp_addr.port()) {
+                    continue; // already bound this port
+                }
+                let listener = TcpListener::bind(format!("0.0.0.0:{}", tcp_addr.port())).await?;
+                debug!(addr = %listener.local_addr()?, "SOME/IP TCP listener bound");
+
+                let tcp_pending = self.pending_requests.clone();
+                let tcp_handlers = self.request_handlers.clone();
+                let tcp_notif_channels = self.notification_channels.clone();
+
+                let tcp_handle = tokio::spawn(async move {
+                    loop {
+                        let (stream, peer) = match listener.accept().await {
+                            Ok(r) => r,
+                            Err(e) => {
+                                error!(error = %e, "TCP accept failed");
+                                continue;
+                            }
+                        };
+                        debug!(%peer, "accepted TCP connection");
+
+                        let conn_pending = tcp_pending.clone();
+                        let conn_handlers = tcp_handlers.clone();
+                        let conn_notif_channels = tcp_notif_channels.clone();
+
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_tcp_connection(
+                                stream,
+                                conn_pending,
+                                conn_handlers,
+                                conn_notif_channels,
+                            )
+                            .await
+                            {
+                                debug!(error = %e, %peer, "TCP connection closed");
+                            }
+                        });
+                    }
+                });
+                self.tcp_listener_handles.push(tcp_handle);
+            }
+        }
+
+        // Start background UDP receive loop.
         //
         // DESIGN: a single SomeIpTransport serves at most ONE instance per
         // service_id.  This is a SOME/IP wire-format constraint: the base
@@ -355,33 +428,54 @@ impl SomeIpTransport {
         })
     }
 
-    /// Look up the remote endpoint for a service.
+    /// Look up the remote endpoint for a service, choosing UDP or TCP based
+    /// on payload size and endpoint availability.
     ///
     /// In static mode, checks the pre-configured remote_services list.
     /// In SD mode, additionally checks the dynamically discovered found_services.
+    ///
+    /// Routing rules:
+    /// - If payload_size >= `udp_threshold` and a TCP endpoint is available, use TCP.
+    /// - If only TCP is configured (no UDP), use TCP regardless of payload size.
+    /// - Otherwise, use UDP.
     fn resolve_endpoint(
         &self,
         service_id: ServiceId,
         instance_id: InstanceId,
-    ) -> Option<SocketAddrV4> {
+        payload_size: usize,
+    ) -> Option<ResolvedEndpoint> {
         // Static config always takes precedence.
-        if let Some(ep) = self
+        if let Some(rs) = self
             .config
             .remote_services
             .iter()
             .find(|rs| rs.service_id == service_id && rs.instance_id == instance_id)
-            .and_then(|rs| rs.endpoint.udp)
         {
-            return Some(ep);
+            return Self::pick_protocol(&rs.endpoint, payload_size);
         }
 
         // In SD mode, fall back to dynamically discovered services.
-        // Only return the endpoint if the TTL has not expired.
+        // The udp_threshold is a client-side decision: look it up from
+        // local service config first (skeleton side), then fall back to
+        // the configured default on SomeIpConfig.
         if self.config.discovery_mode == DiscoveryMode::SomeIpSd {
+            let threshold = self
+                .config
+                .services
+                .iter()
+                .find(|s| s.service_id == service_id)
+                .map(|s| s.endpoint.udp_threshold)
+                .unwrap_or(self.config.udp_threshold);
+
             let found = self.sd.found_services();
             let result = found.get(&(service_id, instance_id)).and_then(|fs| {
                 if fs.ttl_expires_at > std::time::Instant::now() {
-                    fs.udp_endpoint
+                    let ep = crate::config::EndpointConfig {
+                        udp: fs.udp_endpoint,
+                        tcp: fs.tcp_endpoint,
+                        udp_threshold: threshold,
+                    };
+                    Self::pick_protocol(&ep, payload_size)
                 } else {
                     None
                 }
@@ -389,13 +483,31 @@ impl SomeIpTransport {
             if result.is_some() {
                 return result;
             }
-            // TTL expired or not found — remove stale entry if present.
             found.remove_if(&(service_id, instance_id), |_, fs| {
                 fs.ttl_expires_at <= std::time::Instant::now()
             });
         }
 
         None
+    }
+
+    /// Choose UDP or TCP based on endpoint availability and payload size.
+    fn pick_protocol(
+        ep: &crate::config::EndpointConfig,
+        payload_size: usize,
+    ) -> Option<ResolvedEndpoint> {
+        match (ep.udp, ep.tcp) {
+            (Some(udp), Some(tcp)) => {
+                if payload_size >= ep.udp_threshold {
+                    Some(ResolvedEndpoint::Tcp(tcp))
+                } else {
+                    Some(ResolvedEndpoint::Udp(udp))
+                }
+            }
+            (Some(udp), None) => Some(ResolvedEndpoint::Udp(udp)),
+            (None, Some(tcp)) => Some(ResolvedEndpoint::Tcp(tcp)),
+            (None, None) => None,
+        }
     }
 
     /// Check and record that `service_id` is bound to `instance_id` on this
@@ -530,6 +642,61 @@ impl SomeIpTransport {
         Ok(())
     }
 
+    /// Send a SOME/IP frame over a TCP connection.
+    ///
+    /// Opens a new TCP connection to `dest`, writes the length-prefixed frame,
+    /// and returns the stream for reading the response (if needed).
+    async fn send_tcp_frame(
+        &self,
+        header: &MessageHeader,
+        payload: &[u8],
+        dest: SocketAddrV4,
+    ) -> Result<TcpStream, AraComError> {
+        let wire_hdr = encode_header(
+            header,
+            self.client_id,
+            payload.len() as u32,
+            DEFAULT_INTERFACE_VERSION,
+        );
+        let mut frame = Vec::with_capacity(HEADER_LEN + payload.len());
+        frame.extend_from_slice(&wire_hdr);
+        frame.extend_from_slice(payload);
+
+        let mut stream = TcpStream::connect(dest)
+            .await
+            .map_err(|e| AraComError::Transport {
+                message: format!("TCP connect to {dest} failed: {e}"),
+            })?;
+
+        stream
+            .write_all(&frame)
+            .await
+            .map_err(|e| AraComError::Transport {
+                message: format!("TCP write failed: {e}"),
+            })?;
+
+        Ok(stream)
+    }
+
+    /// Send a frame via the appropriate protocol (UDP or TCP).
+    async fn send_frame(
+        &self,
+        header: &MessageHeader,
+        payload: &[u8],
+        endpoint: ResolvedEndpoint,
+    ) -> Result<Option<TcpStream>, AraComError> {
+        match endpoint {
+            ResolvedEndpoint::Udp(dest) => {
+                self.send_datagram(header, payload, dest).await?;
+                Ok(None)
+            }
+            ResolvedEndpoint::Tcp(dest) => {
+                let stream = self.send_tcp_frame(header, payload, dest).await?;
+                Ok(Some(stream))
+            }
+        }
+    }
+
     /// Return the UDP endpoint for a locally offered service by service/instance ID.
     fn local_service_endpoint(
         &self,
@@ -551,8 +718,8 @@ impl Transport for SomeIpTransport {
         mut header: MessageHeader,
         payload: Bytes,
     ) -> Result<(MessageHeader, Bytes), AraComError> {
-        let dest = self
-            .resolve_endpoint(header.service_id, header.instance_id)
+        let endpoint = self
+            .resolve_endpoint(header.service_id, header.instance_id, payload.len())
             .ok_or_else(|| AraComError::ServiceNotAvailable {
                 service_id: header.service_id,
                 instance_id: header.instance_id,
@@ -562,31 +729,45 @@ impl Transport for SomeIpTransport {
         header.session_id = session_id;
         header.message_type = MessageType::Request;
 
-        // Set up the response correlation channel
-        let (tx, rx) = oneshot::channel();
-        self.pending_requests.insert(session_id, tx);
+        let timeout_dur = tokio::time::Duration::from_millis(5000);
 
-        // Send the request
-        if let Err(e) = self.send_datagram(&header, &payload, dest).await {
-            self.pending_requests.remove(&session_id);
-            return Err(e);
-        }
+        match endpoint {
+            ResolvedEndpoint::Udp(dest) => {
+                // UDP: correlate via pending_requests map + receive loop
+                let (tx, rx) = oneshot::channel();
+                self.pending_requests.insert(session_id, tx);
 
-        // Await the correlated response with a timeout
-        let timeout = tokio::time::Duration::from_millis(5000);
-        match tokio::time::timeout(timeout, rx).await {
-            Ok(Ok((resp_header, resp_payload))) => Ok((resp_header, resp_payload)),
-            Ok(Err(_)) => {
-                // Channel closed without response
-                Err(AraComError::Timeout {
-                    timeout_ms: timeout.as_millis() as u64,
-                })
+                if let Err(e) = self.send_datagram(&header, &payload, dest).await {
+                    self.pending_requests.remove(&session_id);
+                    return Err(e);
+                }
+
+                match tokio::time::timeout(timeout_dur, rx).await {
+                    Ok(Ok((resp_header, resp_payload))) => Ok((resp_header, resp_payload)),
+                    Ok(Err(_)) => Err(AraComError::Timeout {
+                        timeout_ms: timeout_dur.as_millis() as u64,
+                    }),
+                    Err(_) => {
+                        self.pending_requests.remove(&session_id);
+                        Err(AraComError::Timeout {
+                            timeout_ms: timeout_dur.as_millis() as u64,
+                        })
+                    }
+                }
             }
-            Err(_) => {
-                self.pending_requests.remove(&session_id);
-                Err(AraComError::Timeout {
-                    timeout_ms: timeout.as_millis() as u64,
-                })
+            ResolvedEndpoint::Tcp(dest) => {
+                // TCP: send request and read response on the same stream
+                let mut stream = self.send_tcp_frame(&header, &payload, dest).await?;
+
+                match tokio::time::timeout(timeout_dur, read_tcp_frame(&mut stream)).await {
+                    Ok(Ok((resp_header, resp_payload))) => Ok((resp_header, resp_payload)),
+                    Ok(Err(e)) => Err(AraComError::Transport {
+                        message: format!("TCP response read failed: {e}"),
+                    }),
+                    Err(_) => Err(AraComError::Timeout {
+                        timeout_ms: timeout_dur.as_millis() as u64,
+                    }),
+                }
             }
         }
     }
@@ -596,8 +777,8 @@ impl Transport for SomeIpTransport {
         mut header: MessageHeader,
         payload: Bytes,
     ) -> Result<(), AraComError> {
-        let dest = self
-            .resolve_endpoint(header.service_id, header.instance_id)
+        let endpoint = self
+            .resolve_endpoint(header.service_id, header.instance_id, payload.len())
             .ok_or_else(|| AraComError::ServiceNotAvailable {
                 service_id: header.service_id,
                 instance_id: header.instance_id,
@@ -606,7 +787,8 @@ impl Transport for SomeIpTransport {
         header.session_id = self.next_session_id();
         header.message_type = MessageType::RequestNoReturn;
 
-        self.send_datagram(&header, &payload, dest).await
+        self.send_frame(&header, &payload, endpoint).await?;
+        Ok(())
     }
 
     async fn send_notification(
@@ -760,7 +942,7 @@ impl Transport for SomeIpTransport {
         match self.config.discovery_mode {
             DiscoveryMode::Static => {
                 // In static mode, check if endpoint is configured
-                if self.resolve_endpoint(service_id, instance_id).is_some() {
+                if self.resolve_endpoint(service_id, instance_id, 0).is_some() {
                     Ok(ServiceInstanceId {
                         service_id,
                         instance_id,
@@ -821,7 +1003,7 @@ impl Transport for SomeIpTransport {
                 // In static mode the subscription is implicitly configured.
                 // Verify the remote service endpoint is known so we can surface
                 // misconfigurations early.
-                if self.resolve_endpoint(service_id, instance_id).is_none() {
+                if self.resolve_endpoint(service_id, instance_id, 0).is_none() {
                     return Err(AraComError::ServiceNotAvailable {
                         service_id,
                         instance_id,
@@ -900,6 +1082,139 @@ impl Drop for SomeIpTransport {
         if let Some(handle) = self.recv_handle.take() {
             handle.abort();
         }
+        for handle in self.tcp_listener_handles.drain(..) {
+            handle.abort();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TCP helpers (free functions)
+// ---------------------------------------------------------------------------
+
+/// Read a single SOME/IP frame from a TCP stream.
+///
+/// SOME/IP over TCP uses the Length field in the 16-byte header for framing:
+/// read 16 bytes (header), extract payload length, read that many bytes.
+async fn read_tcp_frame(stream: &mut TcpStream) -> Result<(MessageHeader, Bytes), SomeIpError> {
+    let mut hdr_buf = [0u8; HEADER_LEN];
+    stream
+        .read_exact(&mut hdr_buf)
+        .await
+        .map_err(|e| SomeIpError::Header(format!("TCP header read: {e}")))?;
+
+    let (hdr, _client_id, payload_len, _iface_ver) = decode_header(&hdr_buf)?;
+    let payload_len = payload_len as usize;
+
+    let mut payload_buf = vec![0u8; payload_len];
+    if payload_len > 0 {
+        stream
+            .read_exact(&mut payload_buf)
+            .await
+            .map_err(|e| SomeIpError::Header(format!("TCP payload read: {e}")))?;
+    }
+
+    Ok((hdr, Bytes::from(payload_buf)))
+}
+
+/// Handle a single accepted TCP connection on the server side.
+///
+/// Reads SOME/IP frames in a loop and dispatches them the same way the UDP
+/// receive loop does. Responses are written back on the same TCP stream.
+async fn handle_tcp_connection(
+    mut stream: TcpStream,
+    pending: Arc<DashMap<u16, PendingResponse>>,
+    handlers: Arc<DashMap<(ServiceId, InstanceId), RequestHandler>>,
+    notif_channels: Arc<DashMap<(ServiceId, InstanceId, MethodId), broadcast::Sender<Bytes>>>,
+) -> Result<(), SomeIpError> {
+    loop {
+        let (hdr, payload) = read_tcp_frame(&mut stream).await?;
+
+        match hdr.message_type {
+            MessageType::Response | MessageType::Error => {
+                if let Some((_, sender)) = pending.remove(&hdr.session_id) {
+                    let _ = sender.send((hdr, payload));
+                } else {
+                    warn!(
+                        session_id = hdr.session_id,
+                        "TCP: response with no pending request"
+                    );
+                }
+            }
+
+            MessageType::Request => {
+                let handler_ref = handlers.iter().find(|e| e.key().0 == hdr.service_id);
+                if let Some(handler) = handler_ref {
+                    let resp_fut = handler.value()(hdr.clone(), payload);
+                    match resp_fut.await {
+                        Ok(resp_payload) => {
+                            let resp_header = MessageHeader {
+                                service_id: hdr.service_id,
+                                method_id: hdr.method_id,
+                                instance_id: hdr.instance_id,
+                                session_id: hdr.session_id,
+                                message_type: MessageType::Response,
+                                return_code: ReturnCode::Ok,
+                            };
+                            let wire_hdr = encode_header(
+                                &resp_header,
+                                0,
+                                resp_payload.len() as u32,
+                                DEFAULT_INTERFACE_VERSION,
+                            );
+                            let mut frame = Vec::with_capacity(HEADER_LEN + resp_payload.len());
+                            frame.extend_from_slice(&wire_hdr);
+                            frame.extend_from_slice(&resp_payload);
+                            stream.write_all(&frame).await.map_err(|e| {
+                                SomeIpError::Header(format!("TCP response write: {e}"))
+                            })?;
+                        }
+                        Err(e) => {
+                            error!(error = %e, "TCP request handler failed");
+                            let err_header = MessageHeader {
+                                service_id: hdr.service_id,
+                                method_id: hdr.method_id,
+                                instance_id: hdr.instance_id,
+                                session_id: hdr.session_id,
+                                message_type: MessageType::Error,
+                                return_code: ReturnCode::NotOk,
+                            };
+                            let wire_hdr =
+                                encode_header(&err_header, 0, 0, DEFAULT_INTERFACE_VERSION);
+                            stream.write_all(&wire_hdr).await.map_err(|e| {
+                                SomeIpError::Header(format!("TCP error write: {e}"))
+                            })?;
+                        }
+                    }
+                } else {
+                    warn!(
+                        service_id = %hdr.service_id,
+                        "TCP: no handler for incoming request"
+                    );
+                }
+            }
+
+            MessageType::Notification => {
+                if let Some(entry) = notif_channels
+                    .iter()
+                    .find(|e| e.key().0 == hdr.service_id && e.key().2 == hdr.method_id)
+                {
+                    let _ = entry.value().send(payload.clone());
+                }
+            }
+
+            MessageType::RequestNoReturn => {
+                let handler_ref = handlers.iter().find(|e| e.key().0 == hdr.service_id);
+                if let Some(handler) = handler_ref {
+                    let fut = handler.value()(hdr, payload);
+                    tokio::spawn(async move {
+                        if let Err(e) = fut.await {
+                            warn!(error = %e, "TCP fire-and-forget handler error");
+                        }
+                    });
+                }
+            }
+        }
     }
 }
 
@@ -922,6 +1237,7 @@ mod tests {
             sd_config: SdConfig::default(),
             services: vec![],
             remote_services: vec![],
+            udp_threshold: 1400,
         }
     }
 

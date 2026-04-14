@@ -63,6 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }],
         }],
         remote_services: vec![],
+        udp_threshold: 1400,
     };
 
     let mut transport = SomeIpTransport::new(config);

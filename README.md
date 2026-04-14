@@ -12,7 +12,7 @@ A focused, cargo-native Rust toolkit that solves the daily pain points of Adapti
 |-------|-------------|
 | **cargo-arxml** | Parses ARXML service definitions, validates them, and generates idiomatic Rust traits, proxies, and skeletons |
 | **ara-com** | Transport-agnostic async traits for service-oriented communication (methods, events, fields) |
-| **ara-com-someip** | Concrete SOME/IP backend with UDP transport, request/response correlation, service discovery, and event notifications |
+| **ara-com-someip** | Concrete SOME/IP backend with UDP/TCP transport, payload-based routing, request/response correlation, service discovery, and event notifications |
 
 ## Why?
 
@@ -26,7 +26,7 @@ ara-rs bridges that gap — standing on top of those crates, not reimplementing 
 # Build
 cargo build --workspace
 
-# Run tests (111 tests across the workspace)
+# Run tests (117 tests across the workspace)
 cargo test --workspace
 
 # Validate ARXML files
@@ -85,7 +85,7 @@ The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVo
 
 - **cargo-arxml** has no runtime dependency on the other crates — it generates code that `use`s `ara-com`
 - **ara-com** defines the `Transport` trait — backends implement it
-- **ara-com-someip** provides the SOME/IP implementation over UDP
+- **ara-com-someip** provides the SOME/IP implementation over UDP and TCP
 
 ## What Works
 
@@ -98,6 +98,8 @@ The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVo
 | Serialization (primitives, String, Vec) — SOME/IP wire-compatible | Done |
 | SOME/IP header encode/decode (cross-validated with `someip_parse`) | Done |
 | UDP transport with background receive loop | Done |
+| TCP transport with length-prefixed framing | Done |
+| Payload-size-based UDP/TCP routing (udp_threshold) | Done |
 | Request/response correlation with session tracking | Done |
 | Fire-and-forget (RequestNoReturn) | Done |
 | Event notifications (send + subscribe + typed event streams) | Done |
@@ -109,17 +111,18 @@ The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVo
 | One-instance-per-service-per-transport invariant (wire-format safety) | Done |
 | Wire compatibility tests (byte-level vsomeip format validation) | Done |
 | Battery-service end-to-end example (SD discovery + events) | Done |
-| TCP transport | Planned |
+| TCP transport | Done |
 | C++ interop (CXX bridge generation) | Planned |
 | Yocto meta-layer | Planned |
 
 ## Test Suite
 
-111 tests across the workspace:
+117 tests across the workspace:
 
 - **26** ara-com unit tests (serialization, types, service state machine)
 - **22** ara-com-someip unit tests (SOME/IP header, SD message format, session IDs, transport state)
-- **12** loopback integration tests (request/response, fire-and-forget, notifications, event channels, concurrent requests, backpressure, instance binding)
+- **12** UDP loopback integration tests (request/response, fire-and-forget, notifications, event channels, concurrent requests, backpressure, instance binding)
+- **6** TCP integration tests (request/response, fire-and-forget, concurrent requests, large payload, error handling, UDP/TCP routing)
 - **3** SD integration tests (offer/find round-trip, stop-offer, subscribe/event delivery)
 - **15** wire compatibility tests (byte-level vsomeip format validation)
 - **13** cargo-arxml codegen integration tests (parser, codegen, SOME/IP deployment)
