@@ -12,9 +12,29 @@ use super::types::resolve_type_name;
 pub fn generate_traits(project: &ArxmlProject) -> Result<String, CargoArxmlError> {
     let mut items: Vec<TokenStream> = Vec::new();
 
-    items.push(quote! {
-        use ara_com::error::AraComError;
+    // Check if any service references custom (non-primitive) types.
+    let needs_types_import = project.services.iter().any(|svc| {
+        svc.methods.iter().any(|m| {
+            m.input_params
+                .iter()
+                .chain(m.output_params.iter())
+                .any(|p| {
+                    let resolved = resolve_type_name(&p.type_ref, project);
+                    resolved.chars().next().is_some_and(|c| c.is_uppercase())
+                })
+        })
     });
+
+    if needs_types_import {
+        items.push(quote! {
+            use super::types::*;
+            use ara_com::error::AraComError;
+        });
+    } else {
+        items.push(quote! {
+            use ara_com::error::AraComError;
+        });
+    }
 
     for svc in &project.services {
         items.push(generate_service_trait(svc, project));

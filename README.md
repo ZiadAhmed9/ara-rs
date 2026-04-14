@@ -26,7 +26,7 @@ ara-rs bridges that gap — standing on top of those crates, not reimplementing 
 # Build
 cargo build --workspace
 
-# Run tests (117 tests across the workspace)
+# Run tests (125 tests across the workspace)
 cargo test --workspace
 
 # Validate ARXML files
@@ -42,7 +42,9 @@ cargo run -p cargo-arxml -- generate path/to/arxml/ --output-dir src/generated/ 
 cargo run -p cargo-arxml -- inspect path/to/service.arxml
 ```
 
-## Battery Service Demo
+## Examples
+
+### Battery Service Demo
 
 A complete end-to-end example showing two Rust processes communicating over SOME/IP with dynamic service discovery and events:
 
@@ -55,6 +57,20 @@ RUST_LOG=info cargo run -p battery-service-example --bin client
 ```
 
 The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVoltage` (request/response), `SetChargeLimit` (fire-and-forget), and subscribes to `VoltageChanged` events — all over real SOME/IP UDP frames on loopback.
+
+### Diagnostics Service Demo
+
+A more complex example exercising capabilities beyond the battery service: 4 methods (including multi-parameter and zero-parameter), nested struct responses (`DtcSnapshot`, `EcuInfo`, `DataRecord`), fire-and-forget (`ClearDtc`), and 2 event groups.
+
+```bash
+# Terminal 1: Start the diagnostics skeleton
+RUST_LOG=info cargo run -p diagnostics-service-example --bin diag_server
+
+# Terminal 2: Run the diagnostics client
+RUST_LOG=info cargo run -p diagnostics-service-example --bin diag_client
+```
+
+The client calls `ReadDtc` (nested struct response), `ClearDtc` (fire-and-forget), `ReadEcuIdentification` (no input params), `ReadDataByIdentifier` (multiple inputs), and subscribes to `DtcStatusChanged` events.
 
 ## Architecture
 
@@ -111,13 +127,14 @@ The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVo
 | One-instance-per-service-per-transport invariant (wire-format safety) | Done |
 | Wire compatibility tests (byte-level vsomeip format validation) | Done |
 | Battery-service end-to-end example (SD discovery + events) | Done |
+| Diagnostics-service example (nested structs, multi-param, 2 event groups) | Done |
 | TCP transport | Done |
 | C++ interop (CXX bridge generation) | Planned |
 | Yocto meta-layer | Planned |
 
 ## Test Suite
 
-117 tests across the workspace:
+125 tests across the workspace:
 
 - **26** ara-com unit tests (serialization, types, service state machine)
 - **22** ara-com-someip unit tests (SOME/IP header, SD message format, session IDs, transport state)
@@ -126,6 +143,7 @@ The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVo
 - **3** SD integration tests (offer/find round-trip, stop-offer, subscribe/event delivery)
 - **15** wire compatibility tests (byte-level vsomeip format validation)
 - **13** cargo-arxml codegen integration tests (parser, codegen, SOME/IP deployment)
+- **7** diagnostics-service codegen tests (nested structs, custom type imports, multi-param methods)
 - **20** cargo-arxml validator tests (missing type refs, invalid/duplicate method IDs, auto-ID collision avoidance, case-insensitive primitives)
 
 All tests pass with zero clippy warnings.

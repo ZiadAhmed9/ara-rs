@@ -42,12 +42,30 @@ pub fn generate_proxy(
     // Event subscribe methods (no struct defs needed)
     let event_impls: Vec<TokenStream> = svc.events.iter().map(generate_event_subscribe).collect();
 
+    // Import generated types if the service references any custom (non-primitive) types.
+    let needs_types_import = svc.methods.iter().any(|m| {
+        m.input_params
+            .iter()
+            .chain(m.output_params.iter())
+            .any(|p| {
+                let resolved = super::types::resolve_type_name(&p.type_ref, project);
+                // If the resolved name starts with uppercase and isn't a primitive, it's a custom type.
+                resolved.chars().next().is_some_and(|c| c.is_uppercase())
+            })
+    });
+    let types_import = if needs_types_import {
+        quote! { use super::super::types::*; }
+    } else {
+        quote! {}
+    };
+
     let tokens = quote! {
         use std::sync::Arc;
         use ara_com::proxy::ProxyBase;
         use ara_com::transport::{AraSerialize, AraDeserialize, Transport};
         use ara_com::types::{InstanceId, MethodId, ServiceId, EventGroupId};
         use ara_com::error::AraComError;
+        #types_import
 
         #(#all_struct_defs)*
 

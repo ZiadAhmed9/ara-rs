@@ -4,5 +4,6 @@ members = [
     "ara-com",
     "ara-com-someip",
     "examples/battery-service",
+    "examples/diagnostics-service",
 ]
 resolver = "2"

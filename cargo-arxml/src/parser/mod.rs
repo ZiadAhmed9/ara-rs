@@ -569,12 +569,16 @@ impl ArxmlParser {
                 }
             }
 
-            // Full AUTOSAR maps events to groups via refs; here we assign the first group to all
-            // events that don't already have one.
-            if let Some(eg) = deployment.event_groups.first() {
-                for event in &mut svc.events {
+            // Assign event group IDs to events that don't have one.
+            // Full AUTOSAR maps events to groups via references; here we
+            // correlate by position: event[i] gets event_groups[i] when
+            // available, otherwise the last group is reused.
+            if !deployment.event_groups.is_empty() {
+                let groups = &deployment.event_groups;
+                for (i, event) in svc.events.iter_mut().enumerate() {
                     if event.event_group_id.is_none() {
-                        event.event_group_id = Some(eg.event_group_id);
+                        let group_idx = i.min(groups.len() - 1);
+                        event.event_group_id = Some(groups[group_idx].event_group_id);
                     }
                 }
             }
