@@ -51,14 +51,17 @@ impl<T: Transport> ProxyBase<T> {
         &self.transport
     }
 
+    /// The SOME/IP service ID this proxy targets.
     pub fn service_id(&self) -> ServiceId {
         self.service_id
     }
 
+    /// The instance ID this proxy targets.
     pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
 
+    /// The default method call configuration (timeout, retries).
     pub fn method_config(&self) -> &MethodConfig {
         &self.method_config
     }

@@ -1,34 +1,43 @@
+//! Newtype wrappers for SOME/IP and AUTOSAR identifiers.
+//!
+//! These types prevent accidental ID confusion (e.g. passing a [`MethodId`]
+//! where a [`ServiceId`] is expected) and provide consistent `Display` and
+//! `From<u16>` implementations.
+
 use std::fmt;
 
-/// SOME/IP Service ID (16-bit)
+/// SOME/IP Service ID (16-bit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ServiceId(pub u16);
 
-/// SOME/IP Method ID (16-bit)
+/// SOME/IP Method ID (16-bit). Valid range for methods: `0x0001..=0x7FFF`.
+/// The range `0x8000..=0xFFFE` is reserved for events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MethodId(pub u16);
 
-/// SOME/IP Event ID (16-bit)
+/// SOME/IP Event ID (16-bit). By convention in the `0x8000..=0xFFFE` range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EventId(pub u16);
 
-/// SOME/IP Event Group ID (16-bit)
+/// SOME/IP Event Group ID (16-bit). Groups related events for
+/// subscription management.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EventGroupId(pub u16);
 
-/// Service Instance ID (16-bit)
+/// Service Instance ID (16-bit). Distinguishes multiple instances of the
+/// same service on the network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InstanceId(pub u16);
 
-/// Major interface version
+/// Major interface version (8-bit). Incompatible changes increment this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MajorVersion(pub u8);
 
-/// Minor interface version
+/// Minor interface version (32-bit). Backwards-compatible changes increment this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MinorVersion(pub u32);
 
-/// Unique identifier for a service instance on the network
+/// Composite identifier for a discovered service instance on the network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ServiceInstanceId {
     pub service_id: ServiceId,

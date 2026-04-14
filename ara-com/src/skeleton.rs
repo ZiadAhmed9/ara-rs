@@ -27,14 +27,18 @@ impl<T: Transport> SkeletonBase<T> {
         }
     }
 
+    /// Access the underlying transport (used by generated code to send
+    /// notifications and register request handlers).
     pub fn transport(&self) -> &Arc<T> {
         &self.transport
     }
 
+    /// The SOME/IP service ID this skeleton is bound to.
     pub fn service_id(&self) -> ServiceId {
         self.service_id
     }
 
+    /// The instance ID this skeleton is bound to.
     pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }

@@ -1,3 +1,5 @@
+//! Configuration types for the SOME/IP transport and service discovery.
+
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use ara_com::types::{EventGroupId, EventId, InstanceId, ServiceId};
@@ -37,6 +39,7 @@ pub struct RemoteServiceConfig {
     pub endpoint: EndpointConfig,
 }
 
+/// SOME/IP-SD multicast configuration and timing parameters.
 #[derive(Debug, Clone)]
 pub struct SdConfig {
     /// SD multicast group (default 239.224.224.224)
@@ -68,27 +71,38 @@ impl Default for SdConfig {
     }
 }
 
+/// Configuration for a locally hosted service instance.
 #[derive(Debug, Clone)]
 pub struct ServiceConfig {
+    /// The SOME/IP service ID.
     pub service_id: ServiceId,
+    /// The instance ID.
     pub instance_id: InstanceId,
+    /// Network endpoint (UDP/TCP addresses).
     pub endpoint: EndpointConfig,
+    /// Event groups hosted by this service.
     pub event_groups: Vec<EventGroupConfig>,
 }
 
+/// Network endpoint configuration for a service.
 #[derive(Debug, Clone)]
 pub struct EndpointConfig {
-    /// UDP endpoint address
+    /// UDP endpoint address.
     pub udp: Option<SocketAddrV4>,
-    /// TCP endpoint address
+    /// TCP endpoint address (not yet implemented).
     pub tcp: Option<SocketAddrV4>,
-    /// Use UDP for messages smaller than this, TCP for larger
+    /// Payload size threshold: messages smaller than this use UDP,
+    /// larger ones would use TCP (when available).
     pub udp_threshold: usize,
 }
 
+/// Configuration for an event group within a service.
 #[derive(Debug, Clone)]
 pub struct EventGroupConfig {
+    /// The event group identifier.
     pub event_group_id: EventGroupId,
+    /// Optional multicast address for event delivery.
     pub multicast: Option<SocketAddrV4>,
+    /// Event IDs belonging to this group.
     pub events: Vec<EventId>,
 }

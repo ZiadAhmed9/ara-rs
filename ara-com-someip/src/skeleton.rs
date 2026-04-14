@@ -43,10 +43,12 @@ impl SomeIpSkeleton {
         }
     }
 
+    /// The SOME/IP service ID this skeleton hosts.
     pub fn service_id(&self) -> ServiceId {
         self.service_id
     }
 
+    /// The instance ID this skeleton hosts.
     pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }

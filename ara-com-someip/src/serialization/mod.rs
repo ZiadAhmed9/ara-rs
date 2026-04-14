@@ -1,3 +1,10 @@
+//! SOME/IP serialization context and wire-format configuration.
+//!
+//! The actual `AraSerialize` / `AraDeserialize` trait implementations for
+//! primitive types live in [`ara_com::serialization`]. This module re-exports
+//! those traits and adds SOME/IP-specific configuration (byte order, string
+//! encoding, length-field size) for future use.
+
 pub mod dynamic;
 pub mod fixed;
 

@@ -116,8 +116,9 @@ pub type EventSubscriberCallback =
 ///    [`ServiceDiscovery::set_event_subscriber_callback`].
 /// 3. Call [`ServiceDiscovery::start`] to bind the SD socket and spawn the
 ///    background task.
-/// 4. Use [`offer_service`], [`stop_offer_service`], [`find_service`],
-///    [`subscribe_eventgroup`], [`unsubscribe_eventgroup`] as needed.
+/// 4. Use [`ServiceDiscovery::offer_service`], [`ServiceDiscovery::stop_offer_service`],
+///    [`ServiceDiscovery::find_service`], [`ServiceDiscovery::subscribe_eventgroup`],
+///    [`ServiceDiscovery::unsubscribe_eventgroup`] as needed.
 pub struct ServiceDiscovery {
     config: SdConfig,
     /// Locally offered services: (service_id, instance_id) → metadata.
@@ -162,7 +163,8 @@ impl ServiceDiscovery {
     /// `SubscribeEventgroup` or `StopSubscribeEventgroup` SD message for one of
     /// our offered services.
     ///
-    /// The callback signature is `(service_id, event_group_id, endpoint, subscribe)`.
+    /// The callback signature is
+    /// `(service_id, instance_id, event_group_id, endpoint, subscribe)`.
     /// When `subscribe` is `true` the endpoint should be added; when `false` it
     /// should be removed.
     pub fn set_event_subscriber_callback(&mut self, cb: EventSubscriberCallback) {
@@ -329,7 +331,7 @@ impl ServiceDiscovery {
     /// Send a FindService SD message and wait for an OfferService reply.
     ///
     /// Returns the discovered [`FoundService`] or an error if no response
-    /// arrives within [`FIND_SERVICE_TIMEOUT`].
+    /// arrives within the find-service timeout (5 seconds).
     pub async fn find_service(
         &self,
         service_id: ServiceId,

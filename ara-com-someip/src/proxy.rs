@@ -36,10 +36,12 @@ impl SomeIpProxy {
         }
     }
 
+    /// The SOME/IP service ID this proxy targets.
     pub fn service_id(&self) -> ServiceId {
         self.service_id
     }
 
+    /// The instance ID this proxy targets.
     pub fn instance_id(&self) -> InstanceId {
         self.instance_id
     }
