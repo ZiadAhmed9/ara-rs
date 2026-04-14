@@ -24,7 +24,9 @@ pub fn generate_proxy(
         .map(|d| quote! { #[doc = #d] })
         .unwrap_or_default();
 
-    let service_id_val = svc.service_id.expect("ID must be set after assign_default_ids");
+    let service_id_val = svc
+        .service_id
+        .expect("ID must be set after assign_default_ids");
     let service_id_lit = Literal::u16_unsuffixed(service_id_val);
 
     // Split each method into (struct_defs, method_body)
@@ -91,7 +93,9 @@ fn generate_proxy_method(
 ) -> (TokenStream, TokenStream) {
     let method_fn_name = Ident::new(&snake_case(&method.name), Span::call_site());
     let req_struct_name = Ident::new(&format!("{}Request", method.name), Span::call_site());
-    let method_id_val = method.method_id.expect("ID must be set after assign_default_ids");
+    let method_id_val = method
+        .method_id
+        .expect("ID must be set after assign_default_ids");
     let method_id_lit = Literal::u16_unsuffixed(method_id_val);
 
     let doc = method
@@ -376,7 +380,9 @@ fn generate_event_subscribe(event: &crate::parser::ir::Event) -> TokenStream {
         &format!("subscribe_{}", snake_case(&event.name)),
         Span::call_site(),
     );
-    let event_group_id_val = event.event_group_id.expect("ID must be set after assign_default_ids");
+    let event_group_id_val = event
+        .event_group_id
+        .expect("ID must be set after assign_default_ids");
     let event_group_id_lit = Literal::u16_unsuffixed(event_group_id_val);
 
     let doc = event

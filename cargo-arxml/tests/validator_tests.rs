@@ -58,9 +58,10 @@ fn test_valid_service_passes_all_checks() {
 #[test]
 fn test_valid_fixture_still_passes() {
     // Ensures the battery_service fixture continues to validate cleanly.
-    let parser =
-        cargo_arxml::parser::ArxmlParser::load(std::path::Path::new("tests/fixtures/battery_service.arxml"))
-            .expect("failed to load fixture");
+    let parser = cargo_arxml::parser::ArxmlParser::load(std::path::Path::new(
+        "tests/fixtures/battery_service.arxml",
+    ))
+    .expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let errors = validator::validate(&project);
     assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
@@ -209,7 +210,9 @@ fn test_method_id_zero_is_invalid() {
 
     let errors = validator::validate(&project);
     assert!(
-        errors.iter().any(|e| matches!(e, ValidationError::InvalidMethodId { id, .. } if *id == 0x0000)),
+        errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::InvalidMethodId { id, .. } if *id == 0x0000)),
         "method ID 0x0000 should be rejected, got: {:?}",
         errors
     );
@@ -227,7 +230,9 @@ fn test_method_id_ffff_is_invalid() {
 
     let errors = validator::validate(&project);
     assert!(
-        errors.iter().any(|e| matches!(e, ValidationError::InvalidMethodId { id, .. } if *id == 0xFFFF)),
+        errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::InvalidMethodId { id, .. } if *id == 0xFFFF)),
         "method ID 0xFFFF should be rejected, got: {:?}",
         errors
     );
@@ -245,7 +250,9 @@ fn test_method_id_in_event_range_is_invalid() {
 
     let errors = validator::validate(&project);
     assert!(
-        errors.iter().any(|e| matches!(e, ValidationError::InvalidMethodId { id, .. } if *id == 0x8001)),
+        errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::InvalidMethodId { id, .. } if *id == 0x8001)),
         "method ID in event range should be rejected, got: {:?}",
         errors
     );
@@ -292,7 +299,9 @@ fn test_duplicate_method_ids_within_service() {
 
     let errors = validator::validate(&project);
     assert!(
-        errors.iter().any(|e| matches!(e, ValidationError::DuplicateMethodId { id, .. } if *id == 0x0001)),
+        errors
+            .iter()
+            .any(|e| matches!(e, ValidationError::DuplicateMethodId { id, .. } if *id == 0x0001)),
         "duplicate method IDs should be detected, got: {:?}",
         errors
     );
@@ -338,7 +347,12 @@ fn test_auto_id_assignment_returns_warnings() {
     let assignments = assign_default_ids(&mut project);
 
     // Should have auto-assigned: service_id, method_id, event_id, event_group_id
-    assert_eq!(assignments.len(), 4, "expected 4 auto-assignments, got: {:?}", assignments);
+    assert_eq!(
+        assignments.len(),
+        4,
+        "expected 4 auto-assignments, got: {:?}",
+        assignments
+    );
 
     // IDs should now be set
     assert!(project.services[0].service_id.is_some());
@@ -366,9 +380,10 @@ fn test_explicit_ids_produce_no_warnings() {
 
 #[test]
 fn test_codegen_with_explicit_ids_returns_no_warnings() {
-    let parser =
-        cargo_arxml::parser::ArxmlParser::load(std::path::Path::new("tests/fixtures/battery_service.arxml"))
-            .expect("failed to load fixture");
+    let parser = cargo_arxml::parser::ArxmlParser::load(std::path::Path::new(
+        "tests/fixtures/battery_service.arxml",
+    ))
+    .expect("failed to load fixture");
     let project = parser.extract_ir().expect("failed to extract IR");
     let gen = cargo_arxml::codegen::CodeGenerator::new(&project);
     let (_files, auto_assignments) = gen.generate().expect("code generation failed");
@@ -430,7 +445,10 @@ fn test_auto_id_skips_existing_explicit_method_id() {
     let id0 = svc.methods[0].method_id.unwrap();
     let id1 = svc.methods[1].method_id.unwrap();
     assert_eq!(id0, 0x0002, "explicit ID should be preserved");
-    assert_ne!(id0, id1, "auto-assigned ID must not collide with explicit ID");
+    assert_ne!(
+        id0, id1,
+        "auto-assigned ID must not collide with explicit ID"
+    );
 }
 
 #[test]

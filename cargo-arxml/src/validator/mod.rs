@@ -86,12 +86,20 @@ fn check_empty_service_interfaces(project: &ArxmlProject, errors: &mut Vec<Valid
 /// or a recognized primitive pattern.
 fn check_missing_type_refs(project: &ArxmlProject, errors: &mut Vec<ValidationError>) {
     // Build set of known type paths.
-    let known_types: HashSet<&str> = project.data_types.iter().map(|dt| dt.path.as_str()).collect();
+    let known_types: HashSet<&str> = project
+        .data_types
+        .iter()
+        .map(|dt| dt.path.as_str())
+        .collect();
 
     for svc in &project.services {
         // Method parameters
         for method in &svc.methods {
-            for param in method.input_params.iter().chain(method.output_params.iter()) {
+            for param in method
+                .input_params
+                .iter()
+                .chain(method.output_params.iter())
+            {
                 if !is_resolvable_type_ref(&param.type_ref, &known_types) {
                     errors.push(ValidationError::MissingTypeRef {
                         element_path: format!("{}/{}/{}", svc.short_name, method.name, param.name),
@@ -183,17 +191,32 @@ fn is_resolvable_type_ref(type_ref: &str, known_types: &HashSet<&str>) -> bool {
         .to_lowercase();
     matches!(
         last_segment.as_str(),
-        "boolean" | "bool"
-            | "uint8" | "u8"
-            | "uint16" | "u16"
-            | "uint32" | "u32"
-            | "uint64" | "u64"
-            | "sint8" | "int8" | "i8"
-            | "sint16" | "int16" | "i16"
-            | "sint32" | "int32" | "i32"
-            | "sint64" | "int64" | "i64"
-            | "float32" | "f32"
-            | "float64" | "f64"
+        "boolean"
+            | "bool"
+            | "uint8"
+            | "u8"
+            | "uint16"
+            | "u16"
+            | "uint32"
+            | "u32"
+            | "uint64"
+            | "u64"
+            | "sint8"
+            | "int8"
+            | "i8"
+            | "sint16"
+            | "int16"
+            | "i16"
+            | "sint32"
+            | "int32"
+            | "i32"
+            | "sint64"
+            | "int64"
+            | "i64"
+            | "float32"
+            | "f32"
+            | "float64"
+            | "f64"
             | "string"
     )
 }

@@ -193,11 +193,8 @@ pub fn assign_default_ids(project: &mut ArxmlProject) -> Vec<IdAssignment> {
         }
 
         // Collect existing method IDs within this service.
-        let mut used_method_ids: HashSet<u16> = svc
-            .methods
-            .iter()
-            .filter_map(|m| m.method_id)
-            .collect();
+        let mut used_method_ids: HashSet<u16> =
+            svc.methods.iter().filter_map(|m| m.method_id).collect();
 
         for method in svc.methods.iter_mut() {
             if method.method_id.is_none() {
@@ -214,16 +211,10 @@ pub fn assign_default_ids(project: &mut ArxmlProject) -> Vec<IdAssignment> {
         }
 
         // Collect existing event IDs within this service.
-        let mut used_event_ids: HashSet<u16> = svc
-            .events
-            .iter()
-            .filter_map(|e| e.event_id)
-            .collect();
-        let mut used_event_group_ids: HashSet<u16> = svc
-            .events
-            .iter()
-            .filter_map(|e| e.event_group_id)
-            .collect();
+        let mut used_event_ids: HashSet<u16> =
+            svc.events.iter().filter_map(|e| e.event_id).collect();
+        let mut used_event_group_ids: HashSet<u16> =
+            svc.events.iter().filter_map(|e| e.event_group_id).collect();
 
         for event in svc.events.iter_mut() {
             if event.event_id.is_none() {
