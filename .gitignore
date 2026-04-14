@@ -26,3 +26,23 @@ Thumbs.db
 
 # Claude Code
 .claude/
+.claude_*
+
+# Codex
+.codex/
+codex.md
+CODEX.md
+
+# AI assistant artifacts
+.aider*
+.cursor/
+.copilot/
+
+# Personal / sensitive files
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.yaml
+secrets.yml

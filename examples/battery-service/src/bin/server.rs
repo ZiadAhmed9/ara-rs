@@ -3,6 +3,9 @@
 //! Uses the generated types (`GetVoltageRequest`, `GetVoltageResponse`, etc.)
 //! from `cargo arxml generate` for request/response serialization.
 //!
+//! Offers the service via SOME/IP-SD and periodically publishes
+//! `VoltageChanged` events to all subscribers.
+//!
 //! ```
 //! cargo run -p battery-service-example --bin server
 //! ```
@@ -16,9 +19,11 @@ use tracing::{info, warn};
 
 use ara_com::error::AraComError;
 use ara_com::transport::{AraDeserialize, AraSerialize, MessageHeader, Transport};
-use ara_com::types::{InstanceId, ServiceId};
+use ara_com::types::{EventGroupId, EventId, InstanceId, ServiceId};
 
-use ara_com_someip::config::{EndpointConfig, SdConfig, ServiceConfig, SomeIpConfig};
+use ara_com_someip::config::{
+    DiscoveryMode, EndpointConfig, EventGroupConfig, SdConfig, ServiceConfig, SomeIpConfig,
+};
 use ara_com_someip::transport::SomeIpTransport;
 
 use battery_service_example::generated::proxy::battery_service::{
@@ -40,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = SomeIpConfig {
         unicast: Ipv4Addr::LOCALHOST,
         client_id: 0x0001,
-        discovery_mode: Default::default(),
+        discovery_mode: DiscoveryMode::SomeIpSd,
         sd_config: SdConfig::default(),
         services: vec![ServiceConfig {
             service_id: SERVICE_ID,
@@ -50,7 +55,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tcp: None,
                 udp_threshold: 1400,
             },
-            event_groups: vec![],
+            event_groups: vec![EventGroupConfig {
+                event_group_id: EventGroupId(1),
+                multicast: None,
+                // VoltageChanged event (method_id 0x8001 on the wire)
+                events: vec![EventId(0x8001)],
+            }],
         }],
         remote_services: vec![],
     };
@@ -73,7 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             1 => {
                                 let req = GetVoltageRequest::ara_deserialize(&payload)?;
                                 let voltage = 12.6 + req.battery_id as f64 * 0.1;
-                                info!("GetVoltage(battery_id={}) → {voltage:.1}V", req.battery_id);
+                                info!("GetVoltage(battery_id={}) -> {voltage:.1}V", req.battery_id);
                                 let resp = GetVoltageResponse { voltage };
                                 let mut buf = Vec::new();
                                 resp.ara_serialize(&mut buf)?;
@@ -98,16 +108,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    // Offer the service using the generated skeleton
+    // Offer the service using the generated skeleton (now via SD)
     let transport = Arc::new(transport);
-    let skeleton = BatteryServiceSkeleton::new(transport, INSTANCE_ID);
+    let skeleton = BatteryServiceSkeleton::new(transport.clone(), INSTANCE_ID);
     skeleton.offer().await?;
 
     info!(
-        "BatteryService offered on {}:{} — waiting for requests...",
+        "BatteryService offered via SD on {}:{} — waiting for requests...",
         Ipv4Addr::LOCALHOST,
         SERVER_PORT
     );
+
+    // Periodically publish VoltageChanged events
+    let skeleton_for_events = BatteryServiceSkeleton::new(transport, INSTANCE_ID);
+    tokio::spawn(async move {
+        let mut voltage = 12.6_f64;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            voltage += 0.1;
+            if voltage > 14.0 {
+                voltage = 12.0;
+            }
+            info!("Publishing VoltageChanged event: {voltage:.1}V");
+            if let Err(e) = skeleton_for_events.notify_voltage_changed(&voltage).await {
+                warn!("Failed to publish event: {e}");
+            }
+        }
+    });
 
     // Wait for Ctrl+C
     tokio::signal::ctrl_c().await?;

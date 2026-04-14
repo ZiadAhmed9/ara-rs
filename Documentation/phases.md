@@ -4,7 +4,7 @@ Goal: Step-by-step path from working tooling to recognized, adopted project in t
 
 ---
 
-## Phase 1 — Foundation & First Demo (Weeks 1-4)
+## Phase 1 — Foundation & First Demo (Weeks 1-4) **[COMPLETE]**
 
 **Objective:** Produce a working end-to-end flow that can be shown in a 2-minute terminal recording: ARXML in, Rust code out, service compiles.
 
@@ -44,7 +44,7 @@ Goal: Step-by-step path from working tooling to recognized, adopted project in t
 
 ---
 
-## Phase 2 — Typed Communication & SOME/IP Transport (Weeks 5-8)
+## Phase 2 — Typed Communication & SOME/IP Transport (Weeks 5-8) **[COMPLETE]**
 
 **Objective:** Generated proxies and skeletons can actually talk over SOME/IP on Linux. This is the moment the tool becomes useful, not just interesting.
 

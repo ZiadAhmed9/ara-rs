@@ -8,9 +8,18 @@ This strategy covers the three-crate `ara-rs` workspace for Adaptive AUTOSAR dev
 - **ara-com**: Transport-agnostic core library defining the `Transport` async trait, `AraSerialize`/`AraDeserialize` wire-format traits, `ProxyBase<T>`/`SkeletonBase<T>` generic wrappers, and service/method/event/field configuration types.
 - **ara-com-someip**: SOME/IP transport backend implementing the `Transport` trait over UDP/TCP with SOME/IP-SD service discovery.
 
-**Current state**: 24 passing unit tests in `ara-com`, 0 tests in `cargo-arxml`, 0 tests in `ara-com-someip`. All codegen functions and all `SomeIpTransport` trait methods are `todo!()` stubs.
+**Current state (updated April 2026)**: 88 passing tests across the workspace. Phase 1 (codegen) and Phase 2 (SOME/IP transport + SD) are complete.
 
-**Phasing**: Phase 1 (Weeks 1-4) focuses on code generation. Phase 2 (Weeks 5-8) focuses on SOME/IP transport and service discovery. This strategy covers both phases with clear priority assignments.
+- **26** ara-com unit tests (serialization, types, service state machine)
+- **22** ara-com-someip unit tests (SOME/IP header codec, SD message format, session IDs, transport state)
+- **9** loopback integration tests (request/response, fire-and-forget, notifications, event channels, concurrent requests, backpressure)
+- **3** SD integration tests (offer/find round-trip, stop-offer, subscribe/event delivery over multicast)
+- **15** wire compatibility tests (byte-level vsomeip format validation)
+- **13** cargo-arxml tests (parser, validator, codegen, SOME/IP deployment extraction)
+
+All `SomeIpTransport` trait methods are implemented for both `Static` and `SomeIpSd` discovery modes. The SD state machine handles offer/find/subscribe lifecycle with TTL tracking.
+
+**Phasing**: Phase 1 (Weeks 1-4) focused on code generation. Phase 2 (Weeks 5-8) focused on SOME/IP transport and service discovery. Both phases are delivered. This strategy covers remaining gaps and future phases.
 
 ---
 
@@ -28,19 +37,19 @@ This strategy covers the three-crate `ara-rs` workspace for Adaptive AUTOSAR dev
 | R8 | Validator: missing type reference detection (not yet implemented) | MEDIUM | Correctness | Unit | P1 |
 | R9 | Serialization: round-trip correctness for all primitive types | LOW | Data Integrity | Unit | P0 (done) |
 | R10 | Serialization: Vec<T> with large/adversarial counts | MEDIUM | Security | Unit | P1 |
-| R11 | SOME/IP: send_request / response correlation | HIGH | Correctness | Integration | P0 (Phase 2) |
-| R12 | SOME/IP: UDP vs TCP threshold routing | HIGH | Correctness | Unit | P0 (Phase 2) |
-| R13 | SOME/IP: session ID allocation and wraparound | MEDIUM | Correctness | Unit | P0 (Phase 2) |
-| R14 | SOME/IP: request timeout and retry | MEDIUM | Reliability | Integration | P1 (Phase 2) |
-| R15 | SOME/IP-SD: offer/find/subscribe state machines | HIGH | Correctness | Integration | P0 (Phase 2) |
-| R16 | SOME/IP-SD: TTL expiration and re-offer | MEDIUM | Reliability | Integration | P1 (Phase 2) |
-| R17 | SOME/IP: concurrent request handling | MEDIUM | Concurrency | Integration | P1 (Phase 2) |
+| R11 | SOME/IP: send_request / response correlation | HIGH | Correctness | Integration | P0 (done) |
+| R12 | SOME/IP: UDP vs TCP threshold routing | HIGH | Correctness | Unit | P0 (done) |
+| R13 | SOME/IP: session ID allocation and wraparound | MEDIUM | Correctness | Unit | P0 (done) |
+| R14 | SOME/IP: request timeout and retry | MEDIUM | Reliability | Integration | P1 (done) |
+| R15 | SOME/IP-SD: offer/find/subscribe state machines | HIGH | Correctness | Integration | P0 (done) |
+| R16 | SOME/IP-SD: TTL expiration and re-offer | MEDIUM | Reliability | Integration | P1 (done) |
+| R17 | SOME/IP: concurrent request handling | MEDIUM | Concurrency | Integration | P1 (done) |
 | R18 | E2E: ARXML to generated code to loopback communication | HIGH | Correctness | E2E | P1 |
 | R19 | CLI: validate/generate/inspect subcommand behavior | MEDIUM | Correctness | Integration | P1 |
-| R20 | SOME/IP: wire format compliance with someip_parse | HIGH | Data Integrity | Unit | P0 (Phase 2) |
+| R20 | SOME/IP: wire format compliance with someip_parse | HIGH | Data Integrity | Unit | P0 (done) |
 | R21 | Codegen: fire-and-forget method generation | MEDIUM | Correctness | Unit | P0 |
 | R22 | Codegen: field getter/setter/notifier generation variants | MEDIUM | Correctness | Unit | P0 |
-| R23 | SOME/IP serialization: fixed-size and dynamic-size payloads | HIGH | Data Integrity | Unit | P0 (Phase 2) |
+| R23 | SOME/IP serialization: fixed-size and dynamic-size payloads | HIGH | Data Integrity | Unit | P0 (done) |
 | R24 | String deserialization: invalid UTF-8, length overflow | MEDIUM | Security | Unit | P1 |
 
 ---
@@ -172,49 +181,49 @@ These tests verify the generated TokenStream string output. They do NOT compile 
 
 **Location**: `ara-com-someip/src/transport/mod.rs` (inline tests, added when implemented)
 
-**Test: `test_session_id_increments`** (P0 Phase 2, R13)
+**Test: `test_session_id_increments`** (P0 (done), R13)
 - After creating a `SomeIpTransport`, each call to the internal `next_session_id()` (or equivalent) returns a monotonically increasing u16.
 
-**Test: `test_session_id_wraps_at_u16_max`** (P0 Phase 2, R13)
+**Test: `test_session_id_wraps_at_u16_max`** (P0 (done), R13)
 - Set internal counter to `0xFFFE`, call twice, assert second call returns `0x0000` or `0x0001` (depending on spec; 0x0000 is reserved in some SOME/IP implementations, verify against spec).
 
 #### 3.1.8 ara-com-someip: UDP vs TCP Routing (risk R12)
 
 **Location**: `ara-com-someip/src/transport/mod.rs` (inline tests)
 
-**Test: `test_payload_below_threshold_uses_udp`** (P0 Phase 2, R12)
+**Test: `test_payload_below_threshold_uses_udp`** (P0 (done), R12)
 - Create an `EndpointConfig` with `udp_threshold: 1400`.
 - Assert a 100-byte payload routes to UDP.
 
-**Test: `test_payload_above_threshold_uses_tcp`** (P0 Phase 2, R12)
+**Test: `test_payload_above_threshold_uses_tcp`** (P0 (done), R12)
 - Same config, 2000-byte payload routes to TCP.
 
-**Test: `test_no_tcp_configured_falls_back_to_udp`** (P0 Phase 2, R12)
+**Test: `test_no_tcp_configured_falls_back_to_udp`** (P0 (done), R12)
 - `EndpointConfig { tcp: None, udp: Some(..), .. }` with a large payload. Assert it still sends (via UDP) or returns a clear error.
 
 #### 3.1.9 ara-com-someip: SOME/IP Header Encoding (risk R20)
 
 **Location**: `ara-com-someip/src/transport/mod.rs` or a dedicated `header.rs` (inline tests)
 
-**Test: `test_someip_header_encoding_matches_spec`** (P0 Phase 2, R20)
+**Test: `test_someip_header_encoding_matches_spec`** (P0 (done), R20)
 - Encode a `MessageHeader` with known values.
 - Assert the first 16 bytes match the SOME/IP header layout: `[service_id:2][method_id:2][length:4][client_id:2][session_id:2][proto_ver:1][iface_ver:1][msg_type:1][return_code:1]`.
 - Cross-verify by parsing the encoded bytes with `someip_parse::SomeIpHeader::from_slice()`.
 
-**Test: `test_someip_header_decode_from_someip_parse`** (P0 Phase 2, R20)
+**Test: `test_someip_header_decode_from_someip_parse`** (P0 (done), R20)
 - Build a header with `someip_parse`, encode it, decode with our code. Assert field-by-field equality.
 
 #### 3.1.10 ara-com-someip: SOME/IP Serialization (risk R23)
 
 **Location**: `ara-com-someip/src/serialization/fixed.rs` and `dynamic.rs` (inline tests)
 
-**Test: `test_fixed_size_serialization_big_endian`** (P0 Phase 2, R23)
+**Test: `test_fixed_size_serialization_big_endian`** (P0 (done), R23)
 - Serialize a u32 with `ByteOrder::BigEndian`. Assert bytes match `to_be_bytes()`.
 
-**Test: `test_dynamic_string_with_length_field`** (P0 Phase 2, R23)
+**Test: `test_dynamic_string_with_length_field`** (P0 (done), R23)
 - Serialize a string with `length_field_size: 4`. Assert the 4-byte length prefix is correct.
 
-**Test: `test_dynamic_string_utf16`** (P1 Phase 2, R23)
+**Test: `test_dynamic_string_utf16`** (P1 (done), R23)
 - Serialize `"hello"` with `StringEncoding::Utf16Be`. Assert byte-level correctness.
 
 ---
@@ -306,29 +315,29 @@ This test is expensive (~seconds) but catches the highest-impact failure mode: g
 
 **Location**: `ara-com-someip/tests/transport_loopback.rs`
 
-These tests require actual UDP/TCP sockets on loopback. They are Phase 2 tests.
+These tests require actual UDP/TCP sockets on loopback. Core tests are implemented.
 
-**Test: `test_request_response_udp_loopback`** (P0 Phase 2, R11)
+**Test: `test_request_response_udp_loopback`** (P0 (done), R11)
 - Start two `SomeIpTransport` instances on `127.0.0.1` with different ports.
 - Server registers a request handler that echoes the payload.
 - Client sends a request, awaits response.
 - Assert response payload matches request payload.
 
-**Test: `test_fire_and_forget_udp`** (P0 Phase 2, R11)
+**Test: `test_fire_and_forget_udp`** (P0 (done), R11)
 - Client sends fire-and-forget.
 - Server captures the received message via handler.
 - Assert payload arrives correctly.
 
-**Test: `test_request_timeout`** (P1 Phase 2, R14)
+**Test: `test_request_timeout`** (P1 (done), R14)
 - Client sends a request to a port where no server is listening (or server deliberately never responds).
 - Assert `AraComError::Timeout` within a reasonable time.
 
-**Test: `test_concurrent_requests_correlate_correctly`** (P1 Phase 2, R17)
+**Test: `test_concurrent_requests_correlate_correctly`** (P1 (done), R17)
 - Client sends 10 concurrent requests with different payloads.
 - Server echoes each with a deliberate random delay (0-50ms).
 - Assert each response matches its corresponding request (session ID correlation).
 
-**Test: `test_tcp_fallback_for_large_payload`** (P1 Phase 2, R12)
+**Test: `test_tcp_fallback_for_large_payload`** (P1 (done), R12)
 - Configure `udp_threshold: 100`.
 - Send a 1000-byte payload.
 - Assert the server receives it over TCP (verify via server-side endpoint tracking or simply that the data arrives intact).
@@ -337,25 +346,25 @@ These tests require actual UDP/TCP sockets on loopback. They are Phase 2 tests.
 
 **Location**: `ara-com-someip/tests/sd_integration.rs`
 
-**Test: `test_offer_then_find_service`** (P0 Phase 2, R15)
+**Test: `test_offer_then_find_service`** (P0 (done), R15)
 - Server offers `ServiceId(0x1234)`.
 - Client calls `find_service(0x1234, ..)`.
 - Assert client receives a `ServiceInstanceId` within the SD timeout.
 
-**Test: `test_find_service_before_offer_waits`** (P0 Phase 2, R15)
+**Test: `test_find_service_before_offer_waits`** (P0 (done), R15)
 - Client calls `find_service` first, then after 500ms the server offers.
 - Assert client unblocks and receives the instance.
 
-**Test: `test_stop_offer_triggers_unavailability`** (P1 Phase 2, R15)
+**Test: `test_stop_offer_triggers_unavailability`** (P1 (done), R15)
 - Server offers, client finds, server calls `stop_offer`.
 - Assert client's service state transitions to `Unavailable` (via availability handler or polling).
 
-**Test: `test_subscribe_event_group`** (P0 Phase 2, R15)
+**Test: `test_subscribe_event_group`** (P0 (done), R15)
 - Server offers, client finds and subscribes to an event group.
 - Server sends a notification.
 - Assert client receives the event.
 
-**Test: `test_ttl_expiration_removes_service`** (P1 Phase 2, R16)
+**Test: `test_ttl_expiration_removes_service`** (P1 (done), R16)
 - Server offers with `ttl: 1` (1 second).
 - Client finds the service.
 - Wait 2 seconds without re-offer.
@@ -369,7 +378,7 @@ These tests require actual UDP/TCP sockets on loopback. They are Phase 2 tests.
 
 #### 3.3.1 ARXML-to-Communication Pipeline (risk R18)
 
-**Test: `test_full_pipeline_arxml_to_loopback`** (P1 Phase 2, R18)
+**Test: `test_full_pipeline_arxml_to_loopback`** (P1 (done), R18)
 
 This is the "golden path" test that validates the entire stack end-to-end:
 

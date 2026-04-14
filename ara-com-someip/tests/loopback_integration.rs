@@ -293,7 +293,7 @@ async fn test_notification_delivery() {
         std::net::SocketAddr::V4(a) => a,
         std::net::SocketAddr::V6(_) => panic!("expected IPv4 loopback address"),
     };
-    skeleton.add_event_subscriber(SERVICE_ID, EVENT_GROUP_ID, proxy_v4);
+    skeleton.add_event_subscriber(SERVICE_ID, INSTANCE_ID, EVENT_GROUP_ID, proxy_v4);
 
     // Skeleton sends a notification event.
     let event_payload = Bytes::from_static(b"\xDE\xAD\xBE\xEF");
@@ -330,7 +330,7 @@ async fn test_notification_delivery() {
         .expect("unsubscribe_event_group failed");
 
     // After unsubscribe, skeleton should see the subscriber removed.
-    skeleton.remove_event_subscriber(SERVICE_ID, EVENT_GROUP_ID, &proxy_v4);
+    skeleton.remove_event_subscriber(SERVICE_ID, INSTANCE_ID, EVENT_GROUP_ID, &proxy_v4);
     // Sending again to zero subscribers should succeed (not an error).
     let notif_header2 = MessageHeader {
         service_id: SERVICE_ID,
@@ -344,4 +344,243 @@ async fn test_notification_delivery() {
         .send_notification(notif_header2, Bytes::new())
         .await
         .expect("send_notification with zero subscribers should return Ok");
+}
+
+#[tokio::test]
+async fn test_notification_via_event_channel() {
+    // Skeleton side — event producer.
+    let mut skeleton = SomeIpTransport::new(skeleton_config(0));
+    skeleton.bind().await.expect("skeleton bind failed");
+    let skeleton_port = skeleton
+        .local_addr()
+        .expect("skeleton has no local addr")
+        .port();
+
+    // Proxy side — event consumer.
+    let mut proxy = SomeIpTransport::new(proxy_config(skeleton_port));
+    proxy.bind().await.expect("proxy bind failed");
+    let proxy_addr = proxy.local_addr().expect("proxy has no local addr");
+
+    // Subscribe to the notification channel before any events arrive.
+    let mut rx = proxy
+        .subscribe_notifications(SERVICE_ID, INSTANCE_ID, EVENT_ID, 16)
+        .expect("subscribe_notifications failed");
+
+    // Register the proxy as a subscriber on the skeleton side.
+    let proxy_v4 = match proxy_addr {
+        std::net::SocketAddr::V4(a) => a,
+        std::net::SocketAddr::V6(_) => panic!("expected IPv4 loopback address"),
+    };
+    skeleton.add_event_subscriber(SERVICE_ID, INSTANCE_ID, EVENT_GROUP_ID, proxy_v4);
+
+    // Skeleton sends a notification.
+    let event_payload = Bytes::from_static(b"\x01\x02\x03\x04");
+    let notif_header = MessageHeader {
+        service_id: SERVICE_ID,
+        method_id: EVENT_ID,
+        instance_id: INSTANCE_ID,
+        session_id: 0,
+        message_type: MessageType::Notification,
+        return_code: ReturnCode::Ok,
+    };
+
+    skeleton
+        .send_notification(notif_header, event_payload.clone())
+        .await
+        .expect("send_notification failed");
+
+    // Proxy receives the payload via the broadcast channel.
+    let received = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+        .await
+        .expect("timed out waiting for notification on channel")
+        .expect("broadcast channel closed unexpectedly");
+
+    assert_eq!(
+        received, event_payload,
+        "notification channel payload mismatch"
+    );
+}
+
+#[tokio::test]
+async fn test_concurrent_requests_10_parallel() {
+    // Skeleton side — echo handler.
+    let mut skeleton = SomeIpTransport::new(skeleton_config(0));
+    skeleton.bind().await.expect("skeleton bind failed");
+    let skeleton_port = skeleton
+        .local_addr()
+        .expect("skeleton has no local addr")
+        .port();
+
+    skeleton
+        .register_request_handler(
+            SERVICE_ID,
+            INSTANCE_ID,
+            Box::new(
+                |_hdr, payload| -> BoxFuture<'static, Result<Bytes, AraComError>> {
+                    Box::pin(async move { Ok(payload) })
+                },
+            ),
+        )
+        .await
+        .unwrap();
+
+    // Proxy side — shared reference across tasks.
+    let mut proxy = SomeIpTransport::new(proxy_config(skeleton_port));
+    proxy.bind().await.expect("proxy bind failed");
+    let proxy = Arc::new(proxy);
+
+    // Spawn 10 tasks, each sending a distinct u32 and expecting it echoed back.
+    let mut handles = Vec::new();
+    for i in 0u32..10 {
+        let proxy_clone = proxy.clone();
+        handles.push(tokio::spawn(async move {
+            let mut buf = Vec::new();
+            i.ara_serialize(&mut buf).unwrap();
+
+            let header = MessageHeader {
+                service_id: SERVICE_ID,
+                method_id: METHOD_ID,
+                instance_id: INSTANCE_ID,
+                session_id: 0,
+                message_type: MessageType::Request,
+                return_code: ReturnCode::Ok,
+            };
+
+            let (_resp_hdr, resp_payload) = proxy_clone
+                .send_request(header, Bytes::from(buf))
+                .await
+                .expect("send_request failed");
+
+            let result =
+                u32::ara_deserialize(&resp_payload).expect("failed to deserialize echo response");
+            assert_eq!(result, i, "echo mismatch for value {i}");
+        }));
+    }
+
+    for handle in handles {
+        handle.await.expect("task panicked");
+    }
+}
+
+#[tokio::test]
+async fn test_notification_channel_backpressure() {
+    // Skeleton side.
+    let mut skeleton = SomeIpTransport::new(skeleton_config(0));
+    skeleton.bind().await.expect("skeleton bind failed");
+    let skeleton_port = skeleton
+        .local_addr()
+        .expect("skeleton has no local addr")
+        .port();
+
+    // Proxy side — small channel buffer so we can trigger Lagged.
+    let mut proxy = SomeIpTransport::new(proxy_config(skeleton_port));
+    proxy.bind().await.expect("proxy bind failed");
+    let proxy_addr = proxy.local_addr().expect("proxy has no local addr");
+
+    // buffer_size = 2 so that 4 rapid sends overflow it.
+    let mut rx = proxy
+        .subscribe_notifications(SERVICE_ID, INSTANCE_ID, EVENT_ID, 2)
+        .expect("subscribe_notifications failed");
+
+    let proxy_v4 = match proxy_addr {
+        std::net::SocketAddr::V4(a) => a,
+        std::net::SocketAddr::V6(_) => panic!("expected IPv4 loopback address"),
+    };
+    skeleton.add_event_subscriber(SERVICE_ID, INSTANCE_ID, EVENT_GROUP_ID, proxy_v4);
+
+    let notif_header = MessageHeader {
+        service_id: SERVICE_ID,
+        method_id: EVENT_ID,
+        instance_id: INSTANCE_ID,
+        session_id: 0,
+        message_type: MessageType::Notification,
+        return_code: ReturnCode::Ok,
+    };
+
+    // Send 4 notifications without consuming — at least some must be dropped.
+    for i in 0u8..4 {
+        let header = notif_header.clone();
+        skeleton
+            .send_notification(header, Bytes::from(vec![i]))
+            .await
+            .expect("send_notification failed");
+    }
+
+    // Allow time for all datagrams to arrive at the proxy receive loop.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // The slow consumer should see a Lagged error because the buffer overflowed.
+    let result = rx.recv().await;
+    assert!(
+        matches!(
+            result,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_))
+        ),
+        "expected Lagged error due to overflow, got: {result:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Instance binding invariant
+// ---------------------------------------------------------------------------
+
+/// Offering the same service_id with a different instance_id on the same
+/// transport must be rejected.
+#[tokio::test]
+async fn test_instance_binding_rejects_second_instance_offer() {
+    let mut transport = SomeIpTransport::new(skeleton_config(0));
+    transport.bind().await.expect("bind failed");
+
+    // First instance succeeds.
+    transport
+        .offer_service(SERVICE_ID, InstanceId(1), MajorVersion(1), MinorVersion(0))
+        .await
+        .expect("first offer must succeed");
+
+    // Second instance for the same service_id must fail.
+    let err = transport
+        .offer_service(SERVICE_ID, InstanceId(2), MajorVersion(1), MinorVersion(0))
+        .await;
+    assert!(
+        matches!(err, Err(AraComError::Transport { .. })),
+        "expected Transport error, got: {err:?}"
+    );
+}
+
+/// subscribe_notifications for the same service_id with a different
+/// instance_id on the same transport must be rejected.
+#[tokio::test]
+async fn test_instance_binding_rejects_second_instance_subscribe() {
+    let mut transport = SomeIpTransport::new(proxy_config(30000));
+    transport.bind().await.expect("bind failed");
+
+    // First subscription succeeds.
+    transport
+        .subscribe_notifications(SERVICE_ID, InstanceId(1), EVENT_ID, 16)
+        .expect("first subscribe must succeed");
+
+    // Second instance for the same service must fail.
+    let err = transport.subscribe_notifications(SERVICE_ID, InstanceId(2), EVENT_ID, 16);
+    assert!(
+        matches!(err, Err(AraComError::Transport { .. })),
+        "expected Transport error, got: {err:?}"
+    );
+}
+
+/// Same instance_id is allowed (idempotent binding).
+#[tokio::test]
+async fn test_instance_binding_allows_same_instance() {
+    let mut transport = SomeIpTransport::new(skeleton_config(0));
+    transport.bind().await.expect("bind failed");
+
+    transport
+        .offer_service(SERVICE_ID, INSTANCE_ID, MajorVersion(1), MinorVersion(0))
+        .await
+        .expect("first offer must succeed");
+
+    // Same instance again should be fine (e.g. re-offer after stop).
+    transport
+        .offer_service(SERVICE_ID, INSTANCE_ID, MajorVersion(1), MinorVersion(0))
+        .await
+        .expect("same instance re-offer must succeed");
 }
