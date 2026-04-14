@@ -11,7 +11,7 @@ ara-rs/
 ├── cargo-arxml/           CLI + library: ARXML → IR → Rust code
 ├── ara-com/               Core traits & async abstractions (transport-agnostic)
 ├── ara-com-someip/        SOME/IP transport backend
-└── examples/              (planned) Full service examples
+└── examples/              Full service examples (battery-service with SD + events)
 ```
 
 **Dependency graph** (compile-time):
@@ -27,6 +27,7 @@ ara-com ──────────▶ async-trait, bytes, futures-core, this
 ara-com-someip ──▶ ara-com               (implements Transport trait)
                    someip_parse           (SOME/IP header parsing)
                    tokio                  (async runtime, sockets)
+                   socket2               (SO_REUSEADDR for SD multicast)
 ```
 
 **Key constraint:** cargo-arxml has NO runtime dependency on ara-com or ara-com-someip. It generates code that `use`s those crates. This keeps the tool usable even if the runtime crates evolve independently.
@@ -254,17 +255,21 @@ Implements `ara_com::Transport` over SOME/IP protocol on Linux sockets.
 
 | Component | Responsibility |
 |-----------|---------------|
-| **Endpoint Manager** | Manages UDP/TCP sockets per service. Routes messages by service/method ID. Selects UDP vs TCP based on `udp_threshold`. |
-| **Session Tracker** | Assigns session IDs to outgoing requests. Correlates responses. Handles timeouts. |
-| **Handler Registry** | Maps (service_id, instance_id) → request handler function. Dispatches incoming requests to skeleton handlers. |
-| **Service Discovery** | SOME/IP-SD state machine over multicast. Offer/Find/Subscribe/Unsubscribe with TTL management. |
-| **Serialization Context** | SOME/IP-specific encoding: byte order, string encoding, length field sizes. Extends ara-com's base serialization. |
+| **Socket I/O** | UDP socket with background receive loop (`tokio::spawn`). Encodes/decodes 16-byte SOME/IP headers. Cross-validated with `someip_parse`. |
+| **Session Tracker** | Assigns monotonically increasing session IDs (skip 0). Correlates responses via `DashMap<u16, oneshot::Sender>`. 5-second timeout. |
+| **Handler Registry** | Maps `(service_id, instance_id)` → request handler function. Dispatches incoming Requests and RequestNoReturn to skeleton handlers. |
+| **Service Discovery** | Separate SD multicast socket (`SO_REUSEADDR` via `socket2`). Background receive loop processes OfferService, FindService, SubscribeEventgroup, StopSubscribeEventgroup entries. TTL tracking with `Instant`-based expiry. |
+| **Notification Channels** | `broadcast::Sender<Bytes>` per `(service_id, instance_id, method_id)`. Receive loop pushes Notification payloads; proxy consumes via `broadcast::Receiver`. Backpressure via bounded channel (slow consumers get `Lagged`). |
+| **Event-Group Routing** | `send_notification` resolves which `EventGroupConfig` contains the event being emitted and only fans out to subscribers of matching groups. Falls back to all-subscribers-for-instance when no event-group config is present. |
+| **Instance Binding** | Enforces one instance per service per transport (`instance_binding: DashMap<ServiceId, InstanceId>`). Checked at `offer_service`, `register_request_handler`, `subscribe_notifications`, and `subscribe_event_group`. This is a SOME/IP wire-format constraint: the base header does not carry instance_id. |
 
 **Configuration** (`SomeIpConfig`):
 - Unicast address for this application
+- Discovery mode: `Static` (pre-configured endpoints) or `SomeIpSd` (multicast discovery)
 - SD multicast group and port (default 239.224.224.224:30490)
-- Per-service endpoint config (UDP/TCP addresses, event groups)
 - SD timing (initial delay, repetition, TTL)
+- Per-service endpoint config (UDP/TCP addresses, event groups with event membership)
+- Remote service endpoints (for static discovery mode)
 
 ---
 

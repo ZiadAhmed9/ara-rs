@@ -8,11 +8,11 @@ This strategy covers the three-crate `ara-rs` workspace for Adaptive AUTOSAR dev
 - **ara-com**: Transport-agnostic core library defining the `Transport` async trait, `AraSerialize`/`AraDeserialize` wire-format traits, `ProxyBase<T>`/`SkeletonBase<T>` generic wrappers, and service/method/event/field configuration types.
 - **ara-com-someip**: SOME/IP transport backend implementing the `Transport` trait over UDP/TCP with SOME/IP-SD service discovery.
 
-**Current state (updated April 2026)**: 88 passing tests across the workspace. Phase 1 (codegen) and Phase 2 (SOME/IP transport + SD) are complete.
+**Current state (updated April 2026)**: 91 passing tests across the workspace. Phase 1 (codegen) and Phase 2 (SOME/IP transport + SD) are complete.
 
 - **26** ara-com unit tests (serialization, types, service state machine)
 - **22** ara-com-someip unit tests (SOME/IP header codec, SD message format, session IDs, transport state)
-- **9** loopback integration tests (request/response, fire-and-forget, notifications, event channels, concurrent requests, backpressure)
+- **12** loopback integration tests (request/response, fire-and-forget, notifications, event channels, concurrent requests, backpressure, instance binding invariant)
 - **3** SD integration tests (offer/find round-trip, stop-offer, subscribe/event delivery over multicast)
 - **15** wire compatibility tests (byte-level vsomeip format validation)
 - **13** cargo-arxml tests (parser, validator, codegen, SOME/IP deployment extraction)

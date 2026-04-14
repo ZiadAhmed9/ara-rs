@@ -26,7 +26,7 @@ ara-rs bridges that gap — standing on top of those crates, not reimplementing 
 # Build
 cargo build --workspace
 
-# Run tests (88 tests across the workspace)
+# Run tests (91 tests across the workspace)
 cargo test --workspace
 
 # Validate ARXML files
@@ -103,6 +103,7 @@ The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVo
 | SOME/IP-SD multicast state machine (offer/find/subscribe lifecycle) | Done |
 | Event-group-aware notification routing | Done |
 | TTL tracking with expiry on discovered services | Done |
+| One-instance-per-service-per-transport invariant (wire-format safety) | Done |
 | Wire compatibility tests (byte-level vsomeip format validation) | Done |
 | Battery-service end-to-end example (SD discovery + events) | Done |
 | TCP transport | Planned |
@@ -111,11 +112,11 @@ The client discovers the `BatteryService` via SOME/IP-SD multicast, calls `GetVo
 
 ## Test Suite
 
-88 tests across the workspace:
+91 tests across the workspace:
 
 - **26** ara-com unit tests (serialization, types, service state machine)
 - **22** ara-com-someip unit tests (SOME/IP header, SD message format, session IDs, transport state)
-- **9** loopback integration tests (request/response, fire-and-forget, notifications, event channels, concurrent requests, backpressure)
+- **12** loopback integration tests (request/response, fire-and-forget, notifications, event channels, concurrent requests, backpressure, instance binding)
 - **3** SD integration tests (offer/find round-trip, stop-offer, subscribe/event delivery)
 - **15** wire compatibility tests (byte-level vsomeip format validation)
 - **13** cargo-arxml tests (parser, validator, codegen, SOME/IP deployment)

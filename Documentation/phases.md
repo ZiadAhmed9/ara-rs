@@ -50,12 +50,14 @@ Goal: Step-by-step path from working tooling to recognized, adopted project in t
 
 ### Deliverables
 
-- ara-com-someip: UDP/TCP socket transport, request/response correlation, session management
-- SOME/IP serialization: fixed and dynamic-length payloads, alignment, TLV support
-- Service Discovery (SOME/IP-SD): offer, find, subscribe/unsubscribe event groups
-- Event streams: async subscription with backpressure (tokio channels)
-- Full battery-management example: client sends request, service responds, events flow — all from generated code
-- Integration tests: two processes communicate over loopback
+- ara-com-someip: UDP socket transport, request/response correlation, session management
+- SOME/IP serialization: fixed and dynamic-length payloads (big-endian wire format)
+- Service Discovery (SOME/IP-SD): multicast state machine with offer/find/subscribe lifecycle, TTL tracking with expiry, `SO_REUSEADDR` via `socket2`
+- Event streams: `broadcast::Sender/Receiver` notification channels with backpressure (slow consumers get `Lagged`)
+- Event-group-aware routing: `send_notification` resolves events to event groups via `EventGroupConfig` and only fans out to matching subscribers
+- Instance binding invariant: one instance per service per transport, enforced at all entry points (`offer_service`, `register_request_handler`, `subscribe_notifications`, `subscribe_event_group`)
+- Full battery-management example: SD discovery, request/response, fire-and-forget, VoltageChanged event subscription — all from generated code
+- 91 tests across the workspace (loopback integration, SD integration, wire compat, instance binding rejection)
 
 ### Implementation Milestones
 
