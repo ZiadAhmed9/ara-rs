@@ -4,6 +4,9 @@
 [![crates.io](https://img.shields.io/crates/v/ara-com-someip.svg)](https://crates.io/crates/ara-com-someip)
 [![crates.io](https://img.shields.io/crates/v/cargo-arxml.svg)](https://crates.io/crates/cargo-arxml)
 [![CI](https://github.com/ZiadAhmed9/ara-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ZiadAhmed9/ara-rs/actions/workflows/ci.yml)
+[![docs](https://img.shields.io/badge/docs-mdBook-blue)](https://ziadahmed9.github.io/ara-rs/)
+[![license](https://img.shields.io/crates/l/ara-com.svg)](LICENSE-MIT)
+[![downloads](https://img.shields.io/crates/d/ara-com.svg)](https://crates.io/crates/ara-com)
 
 **Rust-first ARXML codegen, typed async SOME/IP communication, and C++ interop for Adaptive AUTOSAR on embedded Linux.**
 
@@ -152,6 +155,24 @@ The client calls `ReadDtc` (nested struct response), `ClearDtc` (fire-and-forget
 - **20** cargo-arxml validator tests (missing type refs, invalid/duplicate method IDs, auto-ID collision avoidance, case-insensitive primitives)
 
 All tests pass with zero clippy warnings.
+
+## Roadmap
+
+ara-rs v0.1.0 is published. The next sprints focus on closing feature gaps and growing adoption:
+
+| Sprint | Topic | Status |
+|--------|-------|--------|
+| 11 | Field support (getter/setter/notifier codegen) | Next up |
+| 12 | Error recovery for malformed ARXML | Planned |
+| 13 | `cargo arxml generate --cxx` (auto CXX bridge) | Planned |
+| 14 | Multi-binding (UDP + TCP simultaneous) | Planned |
+| 15 | Community launch (blog, Awesome lists, outreach) | Planned |
+
+See [Documentation/phases.md](Documentation/phases.md) for the full roadmap and sprint definitions.
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, code style, and the PR process. Issues labeled [`good first issue`](https://github.com/ZiadAhmed9/ara-rs/labels/good%20first%20issue) are scoped for newcomers.
 
 ## License
 
