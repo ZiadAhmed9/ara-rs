@@ -34,23 +34,38 @@ let mut transport = SomeIpTransport::new(config);
 transport.bind().await?;
 ```
 
-## Request/Response
+## Service Discovery
 
-The generated proxy handles serialization and transport calls:
+Before calling methods, discover the remote service. Discovery runs on the transport, not the proxy:
 
 ```rust,ignore
 use std::sync::Arc;
+use ara_com::types::{MajorVersion, MinorVersion};
+
+// Subscribe to event notifications BEFORE discovery so the channel
+// is ready when events start arriving.
+let mut event_rx = transport.subscribe_notifications(
+    ServiceId(0x4010), InstanceId(0x0001), MethodId(0x8001), 64,
+)?;
 
 let transport = Arc::new(transport);
+
+// Find the service via SD multicast
+let found = transport
+    .find_service(ServiceId(0x4010), InstanceId(0x0001), MajorVersion(1), MinorVersion(0))
+    .await?;
+```
+
+## Request/Response
+
+The generated proxy exposes scalar-argument methods that handle serialization internally:
+
+```rust,ignore
 let proxy = BatteryServiceProxy::new(transport.clone(), InstanceId(0x0001));
 
-// Find the service (via SD or static config)
-proxy.find().await?;
-
-// Call a method — returns a typed response
-let request = GetVoltageRequest { battery_id: 1 };
-let response = proxy.get_voltage(&request).await?;
-println!("Voltage: {:.1}V", response.voltage);
+// Call a method — returns the typed scalar response
+let voltage = proxy.get_voltage(1u8).await?;
+println!("Voltage: {voltage:.1}V");
 ```
 
 ## Fire-and-Forget
@@ -58,8 +73,7 @@ println!("Voltage: {:.1}V", response.voltage);
 Methods marked as fire-and-forget in the ARXML use `send_fire_and_forget` under the hood:
 
 ```rust,ignore
-let request = SetChargeLimitRequest { limit: 10.0 };
-proxy.set_charge_limit(&request).await?;
+proxy.set_charge_limit(32.0).await?;
 // No response — returns Ok(()) on successful send
 ```
 
@@ -67,13 +81,16 @@ proxy.set_charge_limit(&request).await?;
 
 ### Subscribing (Proxy Side)
 
+The generated proxy has a `subscribe_<event>()` method that subscribes to the event group. Event payloads arrive through the transport's notification channel:
+
 ```rust,ignore
-// Subscribe to an event group
+// Subscribe to the event group via the generated proxy method
 proxy.subscribe_voltage_changed().await?;
 
-// Receive typed events as a stream
-while let Some(event) = proxy.next_voltage_changed().await {
-    println!("Voltage changed: {:.1}V", event.voltage);
+// Receive raw event payloads from the transport channel
+while let Ok(payload) = event_rx.recv().await {
+    let voltage = f64::ara_deserialize(&payload)?;
+    println!("Voltage changed: {voltage:.1}V");
 }
 ```
 

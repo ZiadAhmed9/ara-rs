@@ -10,4 +10,4 @@ build-dir = "book"
 
 [output.html]
 git-repository-url = "https://github.com/ZiadAhmed9/ara-rs"
-edit-url-template = "https://github.com/ZiadAhmed9/ara-rs/edit/master/docs/{path}"
+edit-url-template = "https://github.com/ZiadAhmed9/ara-rs/edit/master/docs/src/{path}"

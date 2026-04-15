@@ -54,23 +54,23 @@ impl AraDeserialize for GetVoltageResponse {
 ## Generated Proxy Example
 
 ```rust,ignore
-pub struct BatteryServiceProxy {
-    base: ProxyBase,
+pub struct BatteryServiceProxy<T: Transport> {
+    pub base: ProxyBase<T>,
 }
 
-impl BatteryServiceProxy {
-    pub async fn get_voltage(
-        &self,
-        request: &GetVoltageRequest,
-    ) -> Result<GetVoltageResponse, AraComError> {
-        // Serializes request, sends via transport, deserializes response
+impl<T: Transport> BatteryServiceProxy<T> {
+    pub fn new(transport: Arc<T>, instance_id: InstanceId) -> Self { /* ... */ }
+
+    pub async fn get_voltage(&self, battery_id: u8) -> Result<f64, AraComError> {
+        // Constructs GetVoltageRequest, calls base.call_method(), returns voltage
     }
 
-    pub async fn set_charge_limit(
-        &self,
-        request: &SetChargeLimitRequest,
-    ) -> Result<(), AraComError> {
-        // Fire-and-forget — no response expected
+    pub async fn set_charge_limit(&self, limit: f64) -> Result<(), AraComError> {
+        // Constructs SetChargeLimitRequest, calls base.call_fire_and_forget()
+    }
+
+    pub async fn subscribe_voltage_changed(&self) -> Result<(), AraComError> {
+        // Subscribes to the event group via the transport
     }
 }
 ```

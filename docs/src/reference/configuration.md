@@ -68,11 +68,15 @@ SomeIpConfig {
 
 ### SD Configuration
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| `multicast_addr` | `239.224.224.224:30490` | SD multicast group |
-| `offer_interval` | 1 second | Time between offer broadcasts |
-| `ttl` | 3 seconds | Time-to-live for service announcements |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `multicast_group` | `Ipv4Addr` | `239.224.224.224` | SD multicast group address |
+| `port` | `u16` | `30490` | SD multicast port |
+| `initial_delay_min` | `u32` | `0` | Minimum delay before first offer (ms) |
+| `initial_delay_max` | `u32` | `3000` | Maximum initial delay random bound (ms) |
+| `repetition_base_delay` | `u32` | `10` | Base delay between offer repetitions (ms) |
+| `repetition_max` | `u32` | `3` | Maximum number of offer repetitions |
+| `ttl` | `u32` | `3` | Time-to-live for service announcements (seconds) |
 
 ### Endpoint Configuration
 

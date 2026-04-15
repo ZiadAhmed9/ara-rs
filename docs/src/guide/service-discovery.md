@@ -41,7 +41,7 @@ let config = SomeIpConfig {
 ### SD Lifecycle
 
 1. **Server** calls `skeleton.offer()` — sends OfferService entries via SD multicast
-2. **Client** calls `proxy.find()` — sends FindService entries and waits for matching offers
+2. **Client** calls `transport.find_service(service_id, instance_id, major, minor)` — sends FindService entries and waits for matching offers
 3. **Client** subscribes to event groups — sends SubscribeEventgroup entries
 4. **Server** publishes events — delivered only to subscribed clients
 
@@ -55,13 +55,13 @@ Discovered services have a time-to-live (TTL). When a TTL expires without renewa
 use ara_com_someip::config::SdConfig;
 
 let sd_config = SdConfig {
-    multicast_addr: SocketAddrV4::new(
-        Ipv4Addr::new(239, 224, 224, 224),
-        30490,
-    ),
-    offer_interval: std::time::Duration::from_secs(1),
-    ttl: 3, // seconds
-    ..SdConfig::default()
+    multicast_group: Ipv4Addr::new(239, 224, 224, 224),
+    port: 30490,
+    initial_delay_min: 0,      // ms before first offer
+    initial_delay_max: 3000,   // ms random upper bound
+    repetition_base_delay: 10, // ms between repetitions
+    repetition_max: 3,         // max offer repetitions
+    ttl: 3,                    // seconds
 };
 ```
 
