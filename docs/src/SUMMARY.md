@@ -13,6 +13,7 @@
 - [Code Generation](./guide/codegen.md)
 - [Runtime Communication](./guide/runtime.md)
 - [Service Discovery](./guide/service-discovery.md)
+- [Cross-Compilation and Yocto](./guide/cross-compilation.md)
 
 # Examples
 
