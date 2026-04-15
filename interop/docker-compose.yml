@@ -1,0 +1,46 @@
+version: "3.8"
+
+# ara-rs <-> vsomeip interop demo
+#
+# The ara-rs battery service server runs on one container,
+# a vsomeip C++ client calls GetVoltage on the other.
+# Both share a bridge network for multicast SD + unicast SOME/IP.
+#
+# Usage:
+#   docker compose -f interop/docker-compose.yml up --build --abort-on-container-exit
+
+services:
+  ara-rs-server:
+    build:
+      context: ..
+      dockerfile: interop/Dockerfile.ara-rs
+    environment:
+      - RUST_LOG=info
+      - ARA_RS_UNICAST=172.20.0.10
+    networks:
+      someip-net:
+        ipv4_address: 172.20.0.10
+    # Server runs until stopped; client drives the test
+    restart: "no"
+
+  vsomeip-client:
+    build:
+      context: ..
+      dockerfile: interop/Dockerfile.vsomeip
+    environment:
+      - VSOMEIP_CONFIGURATION=/etc/vsomeip/vsomeip_client.json
+    networks:
+      someip-net:
+        ipv4_address: 172.20.0.20
+    depends_on:
+      ara-rs-server:
+        condition: service_started
+    # Client exits with 0 on success, non-zero on failure
+    restart: "no"
+
+networks:
+  someip-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

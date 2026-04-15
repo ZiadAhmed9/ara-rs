@@ -13,3 +13,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 futures-core = "0.3"
 async-trait = "0.1"
+
+[[bin]]
+name = "interop-server"
+path = "../../interop/ara-rs-server/main.rs"

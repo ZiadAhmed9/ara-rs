@@ -1,0 +1,17 @@
+FROM rust:1.83-bookworm AS builder
+
+WORKDIR /build
+COPY . .
+RUN cargo build --release -p battery-service-example --bin interop-server
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/interop-server /usr/local/bin/interop-server
+
+ENV RUST_LOG=info
+ENV ARA_RS_UNICAST=172.20.0.10
+CMD ["interop-server"]

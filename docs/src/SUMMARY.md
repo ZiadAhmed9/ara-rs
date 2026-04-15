@@ -14,6 +14,7 @@
 - [Runtime Communication](./guide/runtime.md)
 - [Service Discovery](./guide/service-discovery.md)
 - [Cross-Compilation and Yocto](./guide/cross-compilation.md)
+- [vsomeip Interoperability](./guide/vsomeip-interop.md)
 
 # Examples
 

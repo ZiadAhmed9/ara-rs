@@ -1,0 +1,41 @@
+FROM debian:bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    libboost-system-dev \
+    libboost-thread-dev \
+    libboost-log-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build vsomeip from source
+RUN git clone --depth 1 --branch 3.4.10 \
+    https://github.com/COVESA/vsomeip.git /tmp/vsomeip \
+    && cd /tmp/vsomeip \
+    && cmake -B build -DCMAKE_INSTALL_PREFIX=/usr \
+       -DENABLE_SIGNAL_HANDLING=1 \
+       -DDIAGNOSIS_ADDRESS=0x02 \
+    && cmake --build build -j$(nproc) \
+    && cmake --install build \
+    && rm -rf /tmp/vsomeip
+
+# Build the interop client
+COPY interop/vsomeip-client/ /build/
+WORKDIR /build
+RUN cmake -B build && cmake --build build
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libboost-system1.81.0 \
+    libboost-thread1.81.0 \
+    libboost-log1.81.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/lib/libvsomeip* /usr/lib/
+COPY --from=builder /build/build/vsomeip_client /usr/local/bin/vsomeip_client
+COPY interop/vsomeip-client/vsomeip_client.json /etc/vsomeip/vsomeip_client.json
+
+ENV VSOMEIP_CONFIGURATION=/etc/vsomeip/vsomeip_client.json
+CMD ["vsomeip_client"]
