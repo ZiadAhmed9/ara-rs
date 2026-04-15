@@ -40,7 +40,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse()
         .expect("ARA_RS_UNICAST must be a valid IPv4 address");
 
-    info!("Starting BatteryService interop server (advertise={advertise_ip}, port={SERVER_PORT})...");
+    info!(
+        "Starting BatteryService interop server (advertise={advertise_ip}, port={SERVER_PORT})..."
+    );
 
     let config = SomeIpConfig {
         // unicast is the address embedded in SD offers for peer discovery

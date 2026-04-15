@@ -26,3 +26,4 @@
 
 - [Configuration](./reference/configuration.md)
 - [Publish Order](./reference/publish-order.md)
+- [Benchmarks](./reference/benchmarks.md)
