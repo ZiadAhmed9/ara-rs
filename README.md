@@ -1,5 +1,10 @@
 # ara-rs
 
+[![crates.io](https://img.shields.io/crates/v/ara-com.svg)](https://crates.io/crates/ara-com)
+[![crates.io](https://img.shields.io/crates/v/ara-com-someip.svg)](https://crates.io/crates/ara-com-someip)
+[![crates.io](https://img.shields.io/crates/v/cargo-arxml.svg)](https://crates.io/crates/cargo-arxml)
+[![CI](https://github.com/ZiadAhmed9/ara-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ZiadAhmed9/ara-rs/actions/workflows/ci.yml)
+
 **Rust-first ARXML codegen, typed async SOME/IP communication, and C++ interop for Adaptive AUTOSAR on embedded Linux.**
 
 ---
