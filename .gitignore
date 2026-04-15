@@ -24,6 +24,9 @@ Thumbs.db
 # Generated code output (users generate into their own projects)
 /generated/
 
+# mdBook build output
+docs/book/
+
 # Claude Code
 .claude/
 .claude_*

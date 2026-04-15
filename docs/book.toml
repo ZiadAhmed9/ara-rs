@@ -1,0 +1,13 @@
+[book]
+title = "ara-rs User Guide"
+authors = ["Ziad Ahmed"]
+description = "Rust-first ARXML codegen and SOME/IP communication for Adaptive AUTOSAR"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+git-repository-url = "https://github.com/ZiadAhmed9/ara-rs"
+edit-url-template = "https://github.com/ZiadAhmed9/ara-rs/edit/master/docs/{path}"
