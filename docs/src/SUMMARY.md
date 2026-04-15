@@ -27,3 +27,5 @@
 - [Configuration](./reference/configuration.md)
 - [Publish Order](./reference/publish-order.md)
 - [Benchmarks](./reference/benchmarks.md)
+- [Support Matrix](./reference/support-matrix.md)
+- [Known Limitations](./reference/known-limitations.md)

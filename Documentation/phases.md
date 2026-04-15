@@ -236,4 +236,12 @@ The roadmap above describes product phases. For day-to-day execution and low-ris
 9. [Sprint 09 - CXX Bridge](./sprints/sprint-09-cxx-bridge.md)
 10. [Sprint 10 - Benchmarks](./sprints/sprint-10-benchmarks.md)
 
+### Post-0.1.0 Sprints
+
+11. [Sprint 11 - Field Support](./sprints/sprint-11-field-support.md)
+12. [Sprint 12 - Error Recovery](./sprints/sprint-12-error-recovery.md)
+13. [Sprint 13 - Codegen CXX Bridge](./sprints/sprint-13-codegen-cxx.md)
+14. [Sprint 14 - Multi-Binding](./sprints/sprint-14-multi-binding.md)
+15. [Sprint 15 - Community Launch](./sprints/sprint-15-community-launch.md)
+
 Recommended merge rule: do not start a later sprint until the current sprint has green tests, updated docs, and a clear demo or acceptance check.

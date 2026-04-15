@@ -1,0 +1,45 @@
+name: Good First Issue
+description: Propose a scoped task suitable for new contributors
+labels: ["good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to create well-scoped issues for new contributors.
+        Include enough context that someone unfamiliar with the codebase can get started.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One-paragraph description of the task.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why does this matter? Link to relevant code, docs, or issues.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Suggested Steps
+      description: Step-by-step outline of how to approach this.
+      placeholder: |
+        1. Read `ara-com/src/transport.rs` to understand the trait
+        2. Add the new method to ...
+        3. Write a test in ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How do we know this is done?
+    validations:
+      required: true

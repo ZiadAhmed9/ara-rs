@@ -1,0 +1,51 @@
+name: Bug Report
+description: Report a bug in ara-rs
+labels: ["kind/bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill out the sections below.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps or code snippet to trigger the bug.
+      placeholder: |
+        1. Run `cargo arxml generate ...`
+        2. Compile the generated code
+        3. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Rust version, OS, and relevant crate versions.
+      placeholder: |
+        - rustc: 1.83.0
+        - OS: Ubuntu 24.04
+        - ara-com: 0.1.0
+        - ara-com-someip: 0.1.0
+        - cargo-arxml: 0.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Output
+      description: Paste any relevant error messages, panics, or logs.
+      render: text
+    validations:
+      required: false
