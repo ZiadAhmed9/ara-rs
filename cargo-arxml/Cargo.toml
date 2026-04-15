@@ -8,6 +8,7 @@ keywords = ["autosar", "arxml", "code-generator", "automotive", "someip"]
 categories = ["development-tools", "code-generators"]
 repository = "https://github.com/ZiadAhmed9/ara-rs"
 homepage = "https://github.com/ZiadAhmed9/ara-rs"
+readme = "README.md"
 
 [[bin]]
 name = "cargo-arxml"

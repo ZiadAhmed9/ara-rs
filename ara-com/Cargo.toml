@@ -8,6 +8,7 @@ keywords = ["autosar", "automotive", "communication", "someip", "service-oriente
 categories = ["asynchronous", "network-programming"]
 repository = "https://github.com/ZiadAhmed9/ara-rs"
 homepage = "https://github.com/ZiadAhmed9/ara-rs"
+readme = "README.md"
 
 [dependencies]
 async-trait = "0.1"

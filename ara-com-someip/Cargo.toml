@@ -8,6 +8,7 @@ keywords = ["autosar", "someip", "automotive", "service-discovery"]
 categories = ["network-programming", "asynchronous"]
 repository = "https://github.com/ZiadAhmed9/ara-rs"
 homepage = "https://github.com/ZiadAhmed9/ara-rs"
+readme = "README.md"
 
 [dependencies]
 ara-com = { version = "0.1.0", path = "../ara-com" }

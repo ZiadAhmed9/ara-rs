@@ -218,3 +218,22 @@ Goal: Step-by-step path from working tooling to recognized, adopted project in t
 3. **Complement, never compete.** Position alongside S-CORE and AUTOSAR's official Rust proposal. Acknowledge the ecosystem publicly.
 4. **Solve real pain first.** ARXML-to-Rust codegen is the hook. SOME/IP transport is the retention. C++ interop is the trust-builder.
 5. **Earn trust through transparency.** Public roadmap, open issues, honest benchmarks. Automotive teams are skeptical of hype — show the warts.
+
+---
+
+## Implementation Sprint Sequence
+
+The roadmap above describes product phases. For day-to-day execution and low-risk merging, use the sprint files below in order. Each sprint is intentionally scoped so it can land as one milestone or a short stack of focused PRs.
+
+1. [Sprint 01 - Correctness Traps](./sprints/sprint-01-correctness-traps.md)
+2. [Sprint 02 - Public API Docs](./sprints/sprint-02-public-api-docs.md)
+3. [Sprint 03 - TCP Transport](./sprints/sprint-03-tcp-transport.md)
+4. [Sprint 04 - Diagnostics Example](./sprints/sprint-04-diagnostics-example.md)
+5. [Sprint 05 - Crates.io Release Prep](./sprints/sprint-05-crates-io-release-prep.md)
+6. [Sprint 06 - mdBook Docs Site](./sprints/sprint-06-mdbook-docs-site.md)
+7. [Sprint 07 - Cross Compilation And Yocto](./sprints/sprint-07-cross-compilation-and-yocto.md)
+8. [Sprint 08 - vsomeip Interop Demo](./sprints/sprint-08-vsomeip-interop-demo.md)
+9. [Sprint 09 - CXX Bridge](./sprints/sprint-09-cxx-bridge.md)
+10. [Sprint 10 - Benchmarks](./sprints/sprint-10-benchmarks.md)
+
+Recommended merge rule: do not start a later sprint until the current sprint has green tests, updated docs, and a clear demo or acceptance check.
