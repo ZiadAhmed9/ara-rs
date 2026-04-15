@@ -129,7 +129,7 @@ The client calls `ReadDtc` (nested struct response), `ClearDtc` (fire-and-forget
 | Battery-service end-to-end example (SD discovery + events) | Done |
 | Diagnostics-service example (nested structs, multi-param, 2 event groups) | Done |
 | TCP transport | Done |
-| C++ interop (CXX bridge generation) | Planned |
+| C++ interop (CXX bridge) | Done |
 | Yocto meta-layer | Done |
 
 ## Test Suite

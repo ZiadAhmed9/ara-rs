@@ -1,0 +1,17 @@
+[package]
+name = "cxx-bridge-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ara-com = { version = "0.1.0", path = "../../ara-com" }
+ara-com-someip = { version = "0.1.0", path = "../../ara-com-someip" }
+battery-service-example = { path = "../battery-service" }
+cxx = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[build-dependencies]
+cxx-build = "1"
